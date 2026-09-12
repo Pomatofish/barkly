@@ -171,6 +171,8 @@ input { font: inherit; color: inherit; }
 .log .msg { animation: grammy-msg-in .3s ${EASE} both; }
 @keyframes grammy-msg-in { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
 .msg { max-width: 84%; padding: 9px 13px; border-radius: 18px; line-height: 1.42; font-size: 13.5px; white-space: pre-wrap; word-break: break-word; }
+.msg.has-image { display: flex; flex-direction: column; gap: 6px; }
+.msg-image { display: block; max-width: 100%; max-height: 180px; border-radius: 12px; object-fit: cover; box-shadow: 0 4px 14px rgba(0,0,0,.3); }
 .msg.user { align-self: flex-end; background: ${IG_GRADIENT}; color: #fff; border-bottom-right-radius: 6px; box-shadow: 0 6px 18px rgba(214,41,118,.28); }
 .msg.assistant { align-self: flex-start; background: var(--bg-3); color: var(--fg); border-bottom-left-radius: 6px; }
 .msg.system { align-self: center; background: transparent; color: var(--fg-3); font-size: 11.5px; text-align: center; max-width: 100%; }

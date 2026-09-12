@@ -423,12 +423,23 @@ function bounceMascot() {
 /* =========================================================================
  * Chat log
  * ========================================================================= */
-function appendLog(role, text) {
+function appendLog(role, text, imageUrl) {
   const logEl = $('log');
   if (!logEl) return;
   const el = document.createElement('div');
-  el.className = 'msg ' + role;
-  el.textContent = text;
+  el.className = 'msg ' + role + (imageUrl ? ' has-image' : '');
+  if (imageUrl) {
+    const img = document.createElement('img');
+    img.className = 'msg-image';
+    img.src = imageUrl;
+    img.alt = 'Attached image';
+    el.appendChild(img);
+  }
+  if (text) {
+    const span = document.createElement('span');
+    span.textContent = text;
+    el.appendChild(span);
+  }
   logEl.appendChild(el);
   logEl.scrollTop = logEl.scrollHeight;
 }
@@ -524,7 +535,7 @@ async function runAsk({ text, inputMode }) {
   try {
     session.push({ role: 'user', text, inputMode, ts: Date.now() });
     if (session.length > 50) session = session.slice(-50);
-    appendLog('user', text);
+    appendLog('user', text, pendingAttachedImage);
     showTyping(true);
     if (!isMenuOpen()) showThinkingBubble();
     setStatus(PILL.THINKING.level, PILL.THINKING.message);
@@ -564,7 +575,7 @@ async function runAsk({ text, inputMode }) {
 
 async function runStyleAdvice() {
   try {
-    appendLog('user', 'Match this style');
+    appendLog('user', 'Match this style', pendingAttachedImage);
     showTyping(true);
     setStatus(PILL.THINKING.level, PILL.THINKING.message);
     const ctx = await safeGetPageContext();
