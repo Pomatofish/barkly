@@ -315,10 +315,24 @@ function showBubble(fullText, lock = false) {
   void bubble.offsetWidth; // restart the pop-in animation
   bubble.classList.add('show');
   bubble.classList.toggle('speaking', !!lock);
+  bubble.classList.remove('thinking');
   bubble.style.maxWidth = '280px';
   bubble.textContent = fullText;
   positionBubble(fullText);
   if (!lock) bubbleTimer = setTimeout(() => hideBubble(true), LIMITS.BUBBLE_MS);
+}
+
+/** Three bouncing dots beside the mascot while the model works (menu closed). Replaced by the reply. */
+function showThinkingBubble() {
+  const bubble = $('bubble');
+  const dock = $('dock');
+  if (!bubble || !dock) return;
+  clearTimeout(bubbleTimer);
+  bubbleLocked = true;
+  bubble.classList.remove('speaking');
+  bubble.classList.add('show', 'thinking');
+  bubble.innerHTML = '<span class="dot"></span><span class="dot"></span><span class="dot"></span>';
+  positionBubble('...');
 }
 
 /** Speech finished: unlock and start the normal auto-dismiss timer. */
@@ -355,7 +369,7 @@ function hideBubble(force = false) {
   bubbleLocked = false;
   clearTimeout(bubbleTimer);
   const b = $('bubble');
-  if (b) { b.classList.remove('show'); b.classList.remove('speaking'); }
+  if (b) { b.classList.remove('show', 'speaking', 'thinking'); }
 }
 
 function bounceMascot() {
@@ -460,6 +474,7 @@ async function runAsk({ text, inputMode }) {
     if (session.length > 50) session = session.slice(-50);
     appendLog('user', text);
     showTyping(true);
+    if (!isMenuOpen()) showThinkingBubble();
     setStatus(PILL.THINKING.level, PILL.THINKING.message);
 
     const ctx = await safeGetPageContext();
@@ -472,6 +487,7 @@ async function runAsk({ text, inputMode }) {
     try {
       result = await deps.askAssistant({ messages: session, pageContext: ctx, memory: memBefore, persona, inputMode, attachedImage });
     } catch (e) {
+    hideBubble(true);
       result = { reply: "Something went wrong on my side, but you can keep typing.", highlightTarget: null, memoryUpdate: null, notice: null };
     }
 
