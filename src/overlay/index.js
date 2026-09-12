@@ -367,6 +367,28 @@ function positionBubble(fullText) {
     bubble.style.left = pos.x + 'px';
     bubble.style.top = pos.y + 'px';
   }
+  aimTail(bubble, anchor);
+}
+
+/** Point the bubble's tail at the mascot, whichever side the bubble ended up on. */
+function aimTail(bubble, mascotRect) {
+  try {
+    const b = bubble.getBoundingClientRect();
+    const mx = mascotRect.left + mascotRect.width / 2;
+    const my = mascotRect.top + mascotRect.height / 2;
+    const above = b.bottom <= mascotRect.top + 6;
+    const below = b.top >= mascotRect.bottom - 6;
+    bubble.classList.remove('tail-bottom', 'tail-top', 'tail-right', 'tail-left');
+    if (above || below) {
+      const tx = Math.max(16, Math.min(b.width - 30, mx - b.left - 7));
+      bubble.style.setProperty('--tx', tx + 'px');
+      bubble.classList.add(above ? 'tail-bottom' : 'tail-top');
+    } else {
+      const ty = Math.max(14, Math.min(b.height - 28, my - b.top - 7));
+      bubble.style.setProperty('--ty', ty + 'px');
+      bubble.classList.add(b.right <= mx ? 'tail-right' : 'tail-left');
+    }
+  } catch (e) { /* ignore */ }
 }
 
 function hideBubble(force = false) {

@@ -98,7 +98,16 @@ input { font: inherit; color: inherit; }
   pointer-events: none; white-space: pre-wrap; word-break: break-word;
 }
 .bubble::before { ${HAIRLINE} }
-.bubble::after { content: ''; position: absolute; right: 22px; bottom: -7px; width: 14px; height: 14px; background: var(--bg); transform: rotate(45deg); border-radius: 2px; }
+.bubble::after { content: ''; position: absolute; width: 14px; height: 14px; background: var(--bg); transform: rotate(45deg); border-radius: 3px; box-shadow: 2px 2px 4px rgba(0,0,0,.18); }
+.bubble.tail-bottom::after { left: var(--tx, 60%); bottom: -7px; }
+.bubble.tail-top::after { left: var(--tx, 60%); top: -7px; box-shadow: none; }
+.bubble.tail-right::after { right: -7px; top: var(--ty, 50%); }
+.bubble.tail-left::after { left: -7px; top: var(--ty, 50%); box-shadow: none; }
+/* thought-bubble trail for the thinking state: two small puffs between bubble and mascot */
+.bubble.thinking::after { width: 10px; height: 10px; border-radius: 50%; transform: none; box-shadow: none; animation: grammy-puff 1.2s ease-in-out infinite; }
+.bubble.thinking.tail-bottom::after { bottom: -14px; }
+.bubble.thinking.tail-right::after { right: -14px; }
+@keyframes grammy-puff { 0%, 100% { transform: scale(.85); opacity: .7; } 50% { transform: scale(1.1); opacity: 1; } }
 .bubble.show { opacity: 1; transform: none; pointer-events: auto; cursor: pointer; animation: grammy-bubble-in .45s ${SPRING} both, grammy-float 3.2s ease-in-out .45s infinite; }
 .bubble.show.speaking { box-shadow: 0 14px 44px rgba(0,0,0,.38), 0 0 0 3px rgba(214,41,118,.22); animation: grammy-bubble-in .45s ${SPRING} both, grammy-speak 1.4s ease-in-out .45s infinite; }
 .bubble.thinking { display: flex; gap: 5px; align-items: center; padding: 14px 16px; }
