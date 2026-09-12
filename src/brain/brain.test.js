@@ -205,8 +205,8 @@ test('the influencer AskRequest carries the numbers and the persona instructions
   assert.ok(text.includes('hashtagCount'), 'hashtag count reached the prompt');
 
   const system = fake.systemPromptOf();
-  assert.ok(/cite at least one concrete number/i.test(system), 'told to cite numbers');
-  assert.ok(/numbered recommendations/i.test(system), 'told to end with recommendations');
+  assert.ok(/creator strategist/i.test(system), 'influencer persona present');
+  assert.ok(/numbered recommendations/i.test(system), 'recommendations rule present');
   assert.ok(/PERSONA — influencer/.test(system));
 
   assert.equal(fake.lastType, 'ASK');
@@ -223,7 +223,7 @@ test('the casual persona prompt differs and comments reach the prompt', async ()
   });
   const system = fake.systemPromptOf();
   assert.ok(/PERSONA — casual/.test(system));
-  assert.ok(!/cite at least one concrete number/i.test(system));
+  assert.ok(!/creator strategist/i.test(system));
   assert.ok(fake.lastRequestText().includes('portra never misses'), 'loaded comments are in the prompt');
   assert.ok(fake.lastRequestText().includes('CpublicOne.jpg'), 'row 11: the media URL is passed, never fetched');
 });
