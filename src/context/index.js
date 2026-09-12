@@ -124,6 +124,24 @@ function dedupeIds(posts) {
   return posts;
 }
 
+
+/** Instagram only renders a private account's posts to its followers, so a "Follow" button in the
+ *  post header proves the owner is public (row 2 → green). Caches the result per username. */
+function publicByFollowButton(article, post) {
+  try {
+    if (!article || post.isPrivate !== null) return;
+    const btns = article.querySelectorAll('header button, header [role="button"]');
+    for (const b of btns) {
+      const t = (b.textContent || '').trim().toLowerCase();
+      if (t === 'follow' || t === 'follow back') {
+        post.isPrivate = false;
+        if (post.username) rememberPrivacy(post.username, false).catch(() => {});
+        return;
+      }
+    }
+  } catch (e) { /* noop */ }
+}
+
 /* ------------------------------------------------------------ getPageContext */
 
 /**
@@ -179,6 +197,7 @@ export async function getPageContext(overrides) {
       const post = readArticle(articles[i], { url, index: i });
       post.isPrivate = lookupPrivacy(post.username);
       enrichFromCapture(post);
+      publicByFollowButton(articles[i], post);
       if (post.isPrivate === true) stripPrivate(post);
       posts.push(post);
     }
