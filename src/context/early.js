@@ -94,10 +94,9 @@
       return { images, videos, thumbnails };
     };
 
-    window.addEventListener('message', (e) => {
+    const indexJson = (data) => {
       try {
-        if (e.source !== window || !e.data || e.data.source !== 'grammy-capture') return;
-        walk(e.data.data, (node) => {
+        walk(data, (node) => {
           const code = node.code || node.shortcode;
           if (typeof code !== 'string' || code.length < 5) return;
           if (!node.display_url && !node.image_versions2 && !node.carousel_media
@@ -124,7 +123,30 @@
           if (!existing || size(entry) > size(existing)) store.byShortcode[code] = entry;
         });
       } catch (err) { /* a malformed payload must never break the page */ }
+    };
+
+    window.addEventListener('message', (e) => {
+      if (e.source !== window || !e.data || e.data.source !== 'grammy-capture') return;
+      indexJson(e.data.data);
     });
+
+    // Instagram inlines the first page of data (home feed, permalink) as JSON <script> tags
+    // instead of fetching it, so the fetch/XHR patch never sees it. Index those too.
+    const scanInline = () => {
+      try {
+        document.querySelectorAll('script[type="application/json"]').forEach((sc) => {
+          if (sc.__grammyScanned) return;
+          sc.__grammyScanned = true;
+          const t = sc.textContent || '';
+          if (t.length < 200 || !/shortcode|"code"/.test(t)) return;
+          try { indexJson(JSON.parse(t)); } catch (err) { /* not JSON we understand */ }
+        });
+      } catch (err) { /* ignore */ }
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', scanInline);
+    else scanInline();
+    setTimeout(scanInline, 1500);
+    setTimeout(scanInline, 4000);
   } catch (e) {
     // never break instagram.com
   }

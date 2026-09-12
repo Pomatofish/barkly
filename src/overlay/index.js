@@ -476,12 +476,12 @@ async function safeGetMemory() {
 /** Local intent guess so "how do I …" always points at the control, even if the model forgets. */
 function guessHighlightTarget(text) {
   const q = String(text || '').toLowerCase();
-  if (!/(how|where|show|teach|help)/.test(q)) return null;
-  if (/(like|heart|love)/.test(q)) return 'like_button';
-  if (/(save|bookmark|keep)/.test(q)) return 'save_button';
-  if (/(share|send|forward|repost)/.test(q)) return 'share_button';
-  if (/caption/.test(q)) return 'caption_box';
-  if (/(comment|reply|respond)/.test(q)) return 'comment_box';
+  if (!/\b(how|where|show|teach|help)\b/.test(q)) return null;
+  if (/\b(like|heart|love)\b/.test(q)) return 'like_button';
+  if (/\b(save|bookmark|keep)\b/.test(q)) return 'save_button';
+  if (/\b(share|send|forward|repost)\b/.test(q)) return 'share_button';
+  if (/\bcaption\b/.test(q)) return 'caption_box';
+  if (/\b(comment|reply|respond)\b/.test(q)) return 'comment_box';
   return null;
 }
 
