@@ -263,6 +263,7 @@ async function main() {
 
   const errors = [];
   let cdp = null;
+  let swClient = null;
   try {
     await waitDevtools();
     let targets = await getJSON(`http://localhost:${DEV_PORT}/json`);
@@ -291,16 +292,25 @@ async function main() {
       await navigate(cdp, URLS.post);            // wakes the service worker
       await sleep(1500);
       targets = await getJSON(`http://localhost:${DEV_PORT}/json`);
-      const ext = targets.find((t) => /^chrome-extension:\/\//.test(t.url));
-      if (!ext) console.log('WARN: could not find the extension id; skipping key setup');
+      const sw = targets.find((t) => t.type === 'service_worker' && /src\/bg\/service-worker\.js/.test(t.url));
+      const ext = sw || targets.find((t) => /^chrome-extension:\/\//.test(t.url));
+      if (!ext) console.log('WARN: could not find the extension; skipping key setup');
       else {
-        const extId = new URL(ext.url).host;
-        const t = await putJSON(`http://localhost:${DEV_PORT}/json/new?chrome-extension://${extId}/src/onboarding/index.html`);
-        const c2 = await connectWS(t.webSocketDebuggerUrl);
-        await sleep(500);
-        await c2.send('Runtime.evaluate', { expression: `chrome.storage.local.set({ apiKey: ${JSON.stringify(KEY)}, onboarded: true })`, awaitPromise: true });
-        c2.close();
-        console.log('key: written to chrome.storage.local');
+        if (sw) {
+          swClient = await connectWS(sw.webSocketDebuggerUrl);
+        } else {
+          const extId = new URL(ext.url).host;
+          const t = await putJSON(`http://localhost:${DEV_PORT}/json/new?chrome-extension://${extId}/src/onboarding/index.html`);
+          swClient = await connectWS(t.webSocketDebuggerUrl);
+          await waitFor(swClient, `location.href.indexOf('chrome-extension://')===0 && typeof chrome!=='undefined' && !!chrome.storage`, { timeout: 8000 });
+        }
+        const r = await swClient.send('Runtime.evaluate', {
+          expression: `(async()=>{await chrome.storage.local.set({apiKey:${JSON.stringify(KEY)},onboarded:true});const g=await chrome.storage.local.get('apiKey');return (g.apiKey||'').length})()`,
+          awaitPromise: true, returnByValue: true,
+        });
+        const len = r.result && r.result.value;
+        if (len === KEY.length) console.log(`key: verified in chrome.storage.local via ${sw ? 'service worker' : 'extension page'} (${len} chars)`);
+        else console.log(`WARN: key write NOT verified — ${r.exceptionDetails ? r.exceptionDetails.text : 'stored length ' + len}`);
       }
     }
 
@@ -347,6 +357,16 @@ async function main() {
       const replied = await waitFor(cdp, `(function(){var t=${lastAssistant};return !!t&&!/Add your API key|unavailable right now/i.test(t)})()`, { timeout: 30000 });
       let reply = await evalIn(cdp, lastAssistant);
       check('with key → a real assistant reply appears in the chat log', replied, reply.slice(0, 160));
+      if (!replied && swClient) {
+        // Diagnose: is the key still in storage, and what does the API say to a direct call from the worker?
+        try {
+          const d = await swClient.send('Runtime.evaluate', {
+            expression: `(async()=>{const g=await chrome.storage.local.get('apiKey');const k=(g.apiKey||'').trim();if(!k)return 'no key in storage';try{const r=await fetch('https://api.openai.com/v1/models',{headers:{Authorization:'Bearer '+k}});return 'key present ('+k.length+' chars); GET /v1/models → HTTP '+r.status}catch(e){return 'key present; fetch threw '+e.message}})()`,
+            awaitPromise: true, returnByValue: true,
+          });
+          console.log('  · diagnosis:', d.result && d.result.value);
+        } catch (e) { console.log('  · diagnosis failed:', e.message); }
+      }
       check('influencer reply cites at least one number', /\d/.test(reply), reply.slice(0, 160));
       check('pill returns to green after the reply', await waitPill(cdp, PILL.PUBLIC_POST, 6000), `got "${await pillText(cdp)}"`);
 
@@ -431,6 +451,7 @@ async function main() {
   } catch (e) {
     check('harness ran to completion', false, e && e.message);
   } finally {
+    try { if (swClient) swClient.close(); } catch { /* ignore */ }
     try { if (cdp) cdp.close(); } catch { /* ignore */ }
     try { chrome.kill(); } catch { /* ignore */ }
     try { server.kill(); } catch { /* ignore */ }
