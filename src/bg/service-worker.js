@@ -9,6 +9,7 @@
 // exported `handle()` directly.
 import { MSG, ERR, ok, fail, STORAGE_KEYS, OFFSCREEN_URL, ONBOARDING_URL, defaultMemory } from '../../shared/types.js';
 import { MODELS } from './config.js';
+import { DEFAULT_API_KEY } from './secrets.js';
 import { callModel, speech, transcribe } from './api.js';
 
 /* --------------------------------------------------------------- test seam */
@@ -47,9 +48,10 @@ async function getKey() {
   try {
     const got = await chrome.storage.local.get(STORAGE_KEYS.API_KEY);
     const v = got && got[STORAGE_KEYS.API_KEY];
-    return typeof v === 'string' ? v.trim() : '';
+    const saved = typeof v === 'string' ? v.trim() : '';
+    return saved || (DEFAULT_API_KEY || '').trim();
   } catch (e) {
-    return '';
+    return (DEFAULT_API_KEY || '').trim();
   }
 }
 

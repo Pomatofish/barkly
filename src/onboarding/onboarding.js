@@ -12,6 +12,9 @@
 // cloned copy of the <template id="onboardTemplate"> markup from index.html
 // (see src/onboarding/test.html), so each scenario starts from a clean DOM.
 import { ok, fail, ERR, MSG, STORAGE_KEYS, defaultMemory } from '../../shared/types.js';
+import { DEFAULT_API_KEY } from '../bg/secrets.js';
+
+const BUILT_IN_KEY = !!(DEFAULT_API_KEY && DEFAULT_API_KEY.trim());
 
 /**
  * @param {{ chrome: any, doc: Document }} deps
@@ -59,7 +62,7 @@ export async function initOnboarding({ chrome, doc }) {
   state.persona = existingPersona === 'influencer' ? 'influencer' : 'casual';
 
   if (onboarded) {
-    await renderSummary(els, chrome, { persona: existingPersona, hasKey: !!existingKey });
+    await renderSummary(els, chrome, { persona: existingPersona, hasKey: !!existingKey || BUILT_IN_KEY });
   } else {
     els.apiKeyInput.value = existingKey;
     selectPersonaCard(els, state.persona);
@@ -79,6 +82,7 @@ export async function initOnboarding({ chrome, doc }) {
 
   els.micGrantBtn.addEventListener('click', () => runGuarded(els, () => handleMicGrant(els)));
   els.micSkipBtn.addEventListener('click', () => runGuarded(els, () => {
+    if (BUILT_IN_KEY) return handleDone(els, chrome, state);
     goToStep(els, state, 3);
   }));
 
@@ -98,8 +102,13 @@ export async function initOnboarding({ chrome, doc }) {
     if (state.step > 1) goToStep(els, state, state.step - 1);
   }));
   els.nextBtn.addEventListener('click', () => runGuarded(els, () => {
+    if (BUILT_IN_KEY && state.step === 2) return handleDone(els, chrome, state); // key is built in: no step 3
     if (state.step < 3) goToStep(els, state, state.step + 1);
   }));
+  if (BUILT_IN_KEY) {
+    try { const d3 = els.dots.querySelector('[data-dot="3"]'); if (d3) d3.hidden = true; } catch (e) { /* ignore */ }
+    els.micSkipBtn.textContent = 'Skip for now — you can type instead';
+  }
   els.doneBtn.addEventListener('click', () => runGuarded(els, () => handleDone(els, chrome, state)));
 
   els.summaryView.addEventListener('click', (evt) => runGuarded(els, () => {
@@ -365,7 +374,7 @@ async function renderSummary(els, chrome, { persona, hasKey }) {
   els.summaryView.hidden = false;
 
   els.summaryPersona.textContent = persona === 'influencer' ? 'Influencer' : 'Casual';
-  els.summaryKey.textContent = hasKey ? 'Saved' : 'Not set';
+  els.summaryKey.textContent = BUILT_IN_KEY && !hasKey ? 'Built in' : (hasKey ? 'Saved' : 'Not set');
   els.summaryMic.textContent = await describeMicPermission();
 }
 
