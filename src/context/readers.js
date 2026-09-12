@@ -287,7 +287,10 @@ export function mediaOf(root) {
     const imgs = Array.from(root.querySelectorAll('img')).filter((i) => !isAvatar(i));
     if (!imgs.length) return { mediaType: null, mediaUrl: null, altText: null };
     const main = imgs.find((i) => attr(i, 'srcset')) || imgs[0];
-    return { mediaType: 'image', mediaUrl: bestImageUrl(main), altText: textFromAlt(main) };
+    // Carousel: every rendered slide (Instagram keeps the current slide and its neighbours in the DOM).
+    const urls = [];
+    for (const i of imgs) { const u = bestImageUrl(i); if (u && urls.indexOf(u) < 0) urls.push(u); }
+    return { mediaType: 'image', mediaUrl: bestImageUrl(main), altText: textFromAlt(main), mediaUrls: urls };
   } catch (e) {
     return { mediaType: null, mediaUrl: null, altText: null };
   }
@@ -341,6 +344,7 @@ export function readArticle(article, opts = {}) {
       isPrivate: null,
       mediaType: media.mediaType,
       mediaUrl: media.mediaUrl,
+      mediaUrls: media.mediaUrls || (media.mediaUrl ? [media.mediaUrl] : []),
     };
   } catch (e) {
     const fallback = blankPost(shortcodeFromUrl(url) || `ig_${stableHash(url + String(opts.index || 0))}`);

@@ -91,6 +91,10 @@ export function enrichFromCapture(post) {
         post.mediaUrl = entry.images[0];
       }
     }
+    // All carousel slides come from the captured sidecar (the DOM only holds the visible ones).
+    if (Array.isArray(entry.images) && entry.images.length > (post.mediaUrls || []).length) {
+      post.mediaUrls = entry.images.slice();
+    }
     return post;
   } catch (e) {
     return post;

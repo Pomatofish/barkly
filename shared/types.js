@@ -160,6 +160,7 @@ export const GENERIC_CHIPS = ['What can you do?', 'Paste the caption', 'Explain 
  * @property {boolean|null} isPrivate     from the owner's profile page, cached per username; null if never seen (row 2)
  * @property {'image'|'video'|null} mediaType
  * @property {string|null} mediaUrl       img src or video poster; context never fetches it (row 11)
+ * @property {string[]} [mediaUrls]       additive: every carousel slide known (DOM slides, or all sidecar images from capture); brain sends up to 4
  */
 
 /**

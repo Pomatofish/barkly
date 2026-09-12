@@ -7,6 +7,15 @@ import { buildSystemPrompt, buildStyleSystemPrompt } from './prompts.js';
 
 const MAX_PROMPT_COMMENTS = 30;
 
+/** Up to 4 distinct image URLs for a post: every carousel slide when known, else the main media. */
+export function imageUrlsOf(post) {
+  const list = Array.isArray(post.mediaUrls) && post.mediaUrls.length ? post.mediaUrls : [post.mediaUrl];
+  const out = [];
+  for (const u of list) { if (u && out.indexOf(u) < 0) out.push(u); if (out.length >= 4) break; }
+  if (!out.length && post.mediaUrl) out.push(post.mediaUrl);
+  return out;
+}
+
 /* ---------------------------------------------------------------- helpers */
 
 /** posts.find(p => p.id === focusedPostId) — local copy so brain never imports src/context. */
@@ -241,7 +250,7 @@ export async function buildAskRequest(input) {
   const contextContent = [{ type: 'text', text: buildContextBlock(ctx) }];
   // Row 11: the media URL only — the brain never fetches it. Never for a private owner.
   if (post && post.mediaUrl && post.isPrivate === false) {
-    contextContent.push({ type: 'image', url: post.mediaUrl });
+    for (const u of imageUrlsOf(post)) contextContent.push({ type: 'image', url: u });
   }
   contextContent.push({ type: 'text', text: mem.text });
 
@@ -293,7 +302,7 @@ export async function buildStyleRequest(input) {
 
   const mem = buildMemoryBlock(memory, post ? post.username : null);
   const content = [{ type: 'text', text: buildContextBlock(ctx) }];
-  if (post && post.mediaUrl && post.isPrivate === false) content.push({ type: 'image', url: post.mediaUrl });
+  if (post && post.mediaUrl && post.isPrivate === false) for (const u of imageUrlsOf(post)) content.push({ type: 'image', url: u });
   content.push({ type: 'text', text: mem.text });
   content.push({
     type: 'text',
