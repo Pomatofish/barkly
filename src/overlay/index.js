@@ -268,6 +268,19 @@ function dockDragMove(dx, dy) {
   const x = Math.max(4, Math.min(dragOrigin.x + dx, vw - dock.offsetWidth - 4));
   const y = Math.max(4, Math.min(dragOrigin.y + dy, vh - dock.offsetHeight - 4));
   applyDockPos({ x, y });
+  followDock();
+}
+
+/** Everything anchored to the mascot re-anchors as it moves. */
+function followDock() {
+  try {
+    if (menuOpen) positionPanel();
+    const b = $('bubble');
+    if (b && b.classList.contains('show')) {
+      const text = b.classList.contains('thinking') ? '...' : (b.textContent || '');
+      positionBubble(text);
+    }
+  } catch (e) { /* ignore */ }
 }
 
 function dockDragEnd() {

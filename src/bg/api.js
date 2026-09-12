@@ -10,7 +10,7 @@
 // could add more than one) are preserved in order instead of being collapsed.
 
 import { ok, fail, ERR, PILL, LIMITS } from '../../shared/types.js';
-import { MODELS, TTS_VOICE, REASONING_EFFORT, API } from './config.js';
+import { WEB_SEARCH, WEB_SEARCH_TOOL, MODELS, TTS_VOICE, REASONING_EFFORT, API } from './config.js';
 
 /* ------------------------------------------------------------------ helpers */
 
@@ -155,6 +155,10 @@ async function postResponses({ fetchFn, apiKey, model, input, req }) {
   };
   if (req && req.responseFormat === 'json') {
     body.text = { format: { type: 'json_object' } };
+  }
+  if (WEB_SEARCH && (!req || req.task !== 'side')) {
+    body.tools = [WEB_SEARCH_TOOL];
+    body.tool_choice = 'auto';
   }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), LIMITS.TIMEOUT_MS);

@@ -10,6 +10,9 @@ export const MODELS = {
 
 export const TTS_VOICE = 'coral';
 export const REASONING_EFFORT = 'low';
+// Built-in web search for the brain model (Responses API tool). The model decides when to use it.
+export const WEB_SEARCH = true;
+export const WEB_SEARCH_TOOL = { type: 'web_search_preview', search_context_size: 'low' };
 
 export const API = {
   base: 'https://api.openai.com/v1',
