@@ -335,6 +335,11 @@ function showThinkingBubble() {
   positionBubble('...');
 }
 
+/** The user interrupted the spoken reply: unlock the bubble and let it fade on the normal timer. */
+function releaseBubbleIfSpeaking() {
+  if (bubbleLocked && $('bubble')?.classList.contains('speaking')) releaseBubble();
+}
+
 /** Speech finished: unlock and start the normal auto-dismiss timer. */
 function releaseBubble() {
   bubbleLocked = false;
@@ -576,6 +581,8 @@ function focusTextInput() {
 async function beginPTT(_source) {
   if (pttActive || !micAvailable) return;
   pttActive = true;
+  try { deps.stopSpeaking(); } catch (e) { /* ignore */ } // the user is talking: stop the spoken reply
+  releaseBubbleIfSpeaking();
   $('mascot')?.classList.add('listening');
   try {
     const res = await deps.startListening();
@@ -898,8 +905,11 @@ export function highlight(target) {
     try { const r = el.getBoundingClientRect(); if (r.top < 80 || r.bottom > innerHeight - 80) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) { /* ignore */ }
     hlRaf = requestAnimationFrame(hlTick);
     hlTimer = setTimeout(clearHighlight, 12000);
-    const onClick = (e) => { if (e.composedPath().includes(el)) clearHighlight(); };
-    document.addEventListener('click', onClick, { capture: true, once: true });
+    // any click or Escape anywhere dismisses the highlight (the ring is pointer-events: none)
+    setTimeout(() => {
+      document.addEventListener('pointerdown', clearHighlight, { capture: true, once: true });
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') clearHighlight(); }, { capture: true, once: true });
+    }, 0);
   } catch (e) {
     console.warn('[grammy/overlay] highlight failed', e);
   }
