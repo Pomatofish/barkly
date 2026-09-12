@@ -198,6 +198,9 @@ export async function getPageContext(overrides) {
       post.isPrivate = lookupPrivacy(post.username);
       enrichFromCapture(post);
       publicByFollowButton(articles[i], post);
+      // Home feed: Instagram only serves it to the logged-in user, so an owner whose privacy is still
+      // unknown here is treated as public (row 2 stays for permalinks, reels and stories).
+      if (pageType === 'feed' && post.isPrivate === null) post.isPrivate = false;
       if (post.isPrivate === true) stripPrivate(post);
       posts.push(post);
     }
