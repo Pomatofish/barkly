@@ -1,34 +1,32 @@
-// src/context/index.js — STUB. Returns a realistic fake public post. The context subagent replaces
-// this file with the real DOM reader (fixtures first, live instagram.com second).
-// Interface: getPageContext(), describeStatus(), onNavigate() — see shared/types.js.
-import { PILL, emptyContext } from '../../shared/types.js';
+// src/context/index.js — STUB (Phase 1). Returns a realistic fake public post.
+// The context subagent replaces this with real DOM reading. Keep the exports.
+import { PILL } from '../../shared/types.js';
 
-const FAKE_POST = Object.freeze({
-  id: 'C9xY2kLpQrS',
-  username: 'wanderlust.jules',
+const FAKE_POST = {
+  id: 'C9xY2kLpQ7a',
+  username: 'lena.explores',
   caption:
-    'Golden hour in Lisbon never gets old 🌇 Three days of tiled streets, pastel de nata and zero plans. ' +
-    'Swipe for the view from Miradouro da Graça. #lisbon #goldenhour #travelgram #portugal',
-  altText: 'Photo by wanderlust.jules: a woman in a yellow dress standing on a tiled overlook at sunset with orange rooftops behind her',
-  likes: 4821,
-  commentCount: 137,
-  postedAt: '2026-09-09T17:42:00.000Z',
+    'Golden hour on the cliffs of Moher — 6am, zero wind, and the sea was glass. Shot on 35mm, no filter. Would you wake up this early for a view? #ireland #goldenhour #35mm #travelphotography #cliffsofmoher',
+  altText: 'Photo by lena.explores: a person in a yellow raincoat standing on green cliffs above a calm sea at sunrise.',
+  likes: 12483,
+  commentCount: 214,
+  postedAt: '2026-09-10T06:42:00.000Z',
   comments: [
-    'maria.travels: This light is unreal 😍',
-    'tomek_photo: What lens is this? The colours are insane',
-    'lisboa.local: Miradouro da Graça at sunset is the move, well done',
-    'ellie.k: Adding this to my list immediately',
-    'nomad_dan: The yellow dress against those rooftops 👌',
+    'marco.b: this light is unreal 😍',
+    'saraflynn: ok the raincoat against the green is such a good colour choice',
+    'hikewithtom: what lens? the compression looks like a 50',
+    'ava_shoots: I was there last week and it was FOG. jealous.',
+    'nina.k: 6am?? respect. worth it though',
   ],
   isPrivate: false,
   mediaType: 'image',
-  mediaUrl: 'https://scontent.cdninstagram.com/v/t51.2885-15/fake_lisbon_golden_hour.jpg',
-});
+  mediaUrl: 'https://scontent.cdninstagram.com/v/fake/cliffs_1080.jpg',
+};
 
 /** @returns {Promise<import('../../shared/types.js').PageContext>} */
 export async function getPageContext() {
   try {
-    const url = typeof location !== 'undefined' ? location.href : 'https://www.instagram.com/p/C9xY2kLpQrS/';
+    const url = typeof location !== 'undefined' ? location.href : 'https://www.instagram.com/p/C9xY2kLpQ7a/';
     return {
       pageType: 'post',
       posts: [{ ...FAKE_POST, comments: [...FAKE_POST.comments] }],
@@ -37,39 +35,87 @@ export async function getPageContext() {
       url,
     };
   } catch (e) {
-    console.warn('[context stub] getPageContext failed', e);
-    return emptyContext(typeof location !== 'undefined' ? location.href : '');
+    return {
+      pageType: 'unknown',
+      posts: [],
+      focusedPostId: null,
+      draftCaption: null,
+      url: typeof location !== 'undefined' ? location.href : '',
+    };
   }
 }
 
 /**
- * Pure. Rows 1–6 of failure-modes.md.
+ * Minimal SPA observer: patched pushState/replaceState + popstate + <title> mutations.
+ * @param {(url: string) => void} cb
+ * @returns {() => void} unsubscribe
+ */
+export function onNavigate(cb) {
+  let last = typeof location !== 'undefined' ? location.href : '';
+  let timer = 0;
+  const fire = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      const now = location.href;
+      if (now !== last) {
+        last = now;
+        try { cb(now); } catch (e) { console.warn('[grammy/context] onNavigate cb', e); }
+      }
+    }, 300);
+  };
+  try {
+    const origPush = history.pushState;
+    const origReplace = history.replaceState;
+    history.pushState = function (...a) { const r = origPush.apply(this, a); fire(); return r; };
+    history.replaceState = function (...a) { const r = origReplace.apply(this, a); fire(); return r; };
+    window.addEventListener('popstate', fire);
+    const titleEl = document.querySelector('title');
+    const mo = titleEl ? new MutationObserver(fire) : null;
+    if (mo) mo.observe(titleEl, { childList: true, characterData: true, subtree: true });
+    return () => {
+      history.pushState = origPush;
+      history.replaceState = origReplace;
+      window.removeEventListener('popstate', fire);
+      if (mo) mo.disconnect();
+    };
+  } catch (e) {
+    return () => {};
+  }
+}
+
+/** @param {import('../../shared/types.js').PageContext} ctx */
+export function focusedPost(ctx) {
+  try {
+    if (!ctx || !ctx.posts) return null;
+    return ctx.posts.find((p) => p.id === ctx.focusedPostId) || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * Rows 1–6 → pill. Pure.
  * @param {import('../../shared/types.js').PageContext} ctx
  * @returns {import('../../shared/types.js').StatusInfo}
  */
 export function describeStatus(ctx) {
   try {
-    const [lvl, msg] = (() => {
-      if (!ctx || ctx.pageType === 'unknown') return PILL.UNKNOWN_PAGE;           // row 3
-      const post = ctx.posts?.find((p) => p.id === ctx.focusedPostId) || ctx.posts?.[0];
-      if (!post) return ctx.pageType === 'feed' || ctx.pageType === 'profile' ? PILL.OK : PILL.UNKNOWN_PAGE;
-      if (post.isPrivate === true) return PILL.PRIVATE;                             // row 1
-      if (post.isPrivate === null) return PILL.UNCONFIRMED;                         // row 2
-      if (ctx.pageType === 'story' && !post.caption && !post.altText) return PILL.STORY_NO_TEXT; // row 6
-      if (['post', 'reel', 'story'].includes(ctx.pageType) && !post.caption) return PILL.NO_CAPTION; // row 4
-      if (['post', 'reel'].includes(ctx.pageType) && (!post.comments || post.comments.length === 0)) return PILL.NO_COMMENTS; // row 5
-      return PILL.OK;
-    })();
-    return { level: lvl, message: msg };
+    if (!ctx || ctx.pageType === 'unknown') return PILL.UNKNOWN_PAGE;            // row 3
+    const post = focusedPost(ctx);
+    if (ctx.pageType === 'profile') {
+      const p = ctx.posts[0];
+      if (p && p.isPrivate === true) return PILL.PRIVATE;                         // row 1
+      return PILL.READY;
+    }
+    if (ctx.pageType === 'feed' && !post) return PILL.READY;
+    if (!post) return ctx.pageType === 'feed' ? PILL.READY : PILL.NO_CAPTION;    // row 4
+    if (post.isPrivate === true) return PILL.PRIVATE;                             // row 1
+    if (ctx.pageType === 'story' && post.caption == null && post.altText == null) return PILL.STORY_NO_TEXT; // row 6
+    if (post.isPrivate === null) return PILL.UNCONFIRMED;                         // row 2
+    if (post.caption == null) return PILL.NO_CAPTION;                             // row 4
+    if (!post.comments || post.comments.length === 0) return PILL.NO_COMMENTS;    // row 5
+    return PILL.PUBLIC_POST;
   } catch (e) {
-    return { level: 'yellow', message: PILL.UNKNOWN_PAGE[1] };
+    return PILL.UNKNOWN_PAGE;
   }
-}
-
-/**
- * SPA navigation observer. STUB: never fires.
- * @param {(url: string) => void} _cb @returns {() => void} unsubscribe
- */
-export function onNavigate(_cb) {
-  return () => {};
 }

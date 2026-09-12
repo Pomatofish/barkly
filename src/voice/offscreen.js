@@ -1,6 +1,6 @@
-// src/voice/offscreen.js — STUB. Runs on the extension origin so it inherits the microphone grant
-// made on the onboarding page. Handles ONLY messages with target === 'offscreen'.
-// The voice subagent replaces this with a real MediaRecorder (port demos/mic-tts-test-insta/offscreen.js).
+// src/voice/offscreen.js — STUB (Phase 1). Runs on the extension origin so it
+// inherits the microphone grant made on the onboarding page.
+// Handles { target:'offscreen', type: VOICE_START | VOICE_STOP }.
 import { MSG, ok, fail, ERR } from '../../shared/types.js';
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
@@ -11,14 +11,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       return false;
     }
     if (msg.type === MSG.VOICE_STOP) {
-      // 1 KB of silence, base64 — enough for the round trip to be exercised
-      const silence = btoa(String.fromCharCode(...new Uint8Array(1024)));
-      sendResponse(ok({ audioBase64: silence, mime: 'audio/webm' }));
+      // 4 fake bytes, base64: AAECAw==
+      sendResponse(ok({ audioBase64: 'AAECAw==', mime: 'audio/webm' }));
       return false;
     }
     sendResponse(fail(ERR.UNKNOWN_TYPE, msg.type));
   } catch (e) {
-    sendResponse(fail(ERR.OFFSCREEN_FAILED, e?.message));
+    sendResponse(fail(ERR.OFFSCREEN_FAILED, e && e.message));
   }
   return false;
 });

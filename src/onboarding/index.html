@@ -7,43 +7,30 @@
 <link rel="stylesheet" href="onboarding.css">
 </head>
 <body>
-<main class="card">
-  <div class="head">
-    <span class="mascot">🐶</span>
-    <div>
-      <h1>Grammy</h1>
-      <p class="sub">Your Instagram assistant. Three quick steps.</p>
-    </div>
-  </div>
+  <main class="card">
+    <h1>🐶 Grammy</h1>
+    <p class="sub">Your Instagram assistant. Three quick steps. (Placeholder — the onboarding module fills this in.)</p>
 
-  <section class="step">
-    <h2>1 · Pick a persona</h2>
-    <div class="personas">
-      <label class="persona"><input type="radio" name="persona" value="casual" checked>
-        <b>Casual</b><span>Talks like a friend. Plain language, short, curious.</span></label>
-      <label class="persona"><input type="radio" name="persona" value="influencer">
-        <b>Influencer</b><span>Analytical and data-driven. Cites the numbers, ends with recommendations.</span></label>
-    </div>
-  </section>
+    <section>
+      <h2>1. Pick a persona</h2>
+      <label><input type="radio" name="persona" value="casual" checked> Casual — talks like a friend, explains what is on screen</label>
+      <label><input type="radio" name="persona" value="influencer"> Influencer — analytical, cites the numbers, ends with recommendations</label>
+    </section>
 
-  <section class="step">
-    <h2>2 · Microphone</h2>
-    <p>Grant the mic once here so push-to-talk works on Instagram.</p>
-    <button id="mic" class="btn ghost">Grant microphone</button>
-    <span id="micState" class="state">not requested</span>
-  </section>
+    <section>
+      <h2>2. Microphone</h2>
+      <button id="mic" type="button">Grant microphone</button>
+      <span id="micState" class="muted">not requested</span>
+    </section>
 
-  <section class="step">
-    <h2>3 · API key</h2>
-    <input id="key" type="password" placeholder="sk-…" autocomplete="off" spellcheck="false">
-    <p class="hint">Stored only in this browser (chrome.storage). Never leaves it except to call the model.</p>
-  </section>
+    <section>
+      <h2>3. API key</h2>
+      <input id="key" type="password" placeholder="sk-…" autocomplete="off">
+    </section>
 
-  <div class="actions">
-    <button id="done" class="btn primary">Done</button>
-    <span id="note" class="state"></span>
-  </div>
-</main>
-<script type="module" src="onboarding.js"></script>
+    <button id="done" class="primary" type="button">Done</button>
+    <p id="note" class="muted"></p>
+  </main>
+  <script type="module" src="onboarding.js"></script>
 </body>
 </html>

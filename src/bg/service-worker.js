@@ -1,6 +1,6 @@
-// src/bg/service-worker.js — STUB. Routes every bus message and returns fake data.
-// The bg subagent replaces this with real fetches (all network calls happen HERE and only here).
-import { MSG, ok, fail, ERR, STORAGE_KEYS, PATHS, defaultMemory } from '../../shared/types.js';
+// src/bg/service-worker.js — STUB (Phase 1). Routes every bus type and returns fake data.
+// The bg subagent replaces the handlers with real fetches (see shared/types.js §6).
+import { MSG, ERR, ok, fail, STORAGE_KEYS, OFFSCREEN_URL, defaultMemory } from '../../shared/types.js';
 import { MODELS } from './config.js';
 
 // Open onboarding on first install.
@@ -8,31 +8,34 @@ chrome.runtime.onInstalled.addListener((details) => {
   try {
     if (details.reason === 'install') chrome.runtime.openOptionsPage();
   } catch (e) {
-    console.warn('[bg] openOptionsPage failed', e);
+    console.warn('[grammy/bg] openOptionsPage', e);
   }
 });
 
-// Toolbar icon → onboarding/settings.
+// Toolbar icon → settings.
 try {
   chrome.action.onClicked.addListener(() => chrome.runtime.openOptionsPage());
-} catch (e) { /* no action in manifest */ }
+} catch (e) {
+  /* no action API in some contexts */
+}
 
-async function getMemory() {
+async function readMemory() {
   try {
     const got = await chrome.storage.local.get(STORAGE_KEYS.MEMORY);
-    return got?.[STORAGE_KEYS.MEMORY] || defaultMemory();
+    const m = got[STORAGE_KEYS.MEMORY];
+    if (!m || typeof m !== 'object') return defaultMemory();
+    return { ...defaultMemory(), ...m, profile: { ...defaultMemory().profile, ...(m.profile || {}) } };
   } catch (e) {
     return defaultMemory();
   }
 }
 
-async function saveMemory(partial) {
-  const m = await getMemory();
-  if (partial?.profile) m.profile = { ...m.profile, ...partial.profile };
-  if (partial?.pinned) m.pinned = partial.pinned;
-  if (partial?.history) m.history = partial.history;
-  await chrome.storage.local.set({ [STORAGE_KEYS.MEMORY]: m });
-  return m;
+async function writeMemory(partial) {
+  const cur = await readMemory();
+  const p = partial || {};
+  const next = { ...cur, ...p, profile: { ...cur.profile, ...(p.profile || {}) } };
+  await chrome.storage.local.set({ [STORAGE_KEYS.MEMORY]: next });
+  return next;
 }
 
 let creatingOffscreen = null;
@@ -41,56 +44,62 @@ async function ensureOffscreen() {
   if (contexts.length) return;
   if (creatingOffscreen) return creatingOffscreen;
   creatingOffscreen = chrome.offscreen
-    .createDocument({ url: PATHS.OFFSCREEN, reasons: ['USER_MEDIA'], justification: 'Record push-to-talk voice questions while the user browses Instagram.' })
+    .createDocument({
+      url: OFFSCREEN_URL,
+      reasons: ['USER_MEDIA'],
+      justification: 'Record push-to-talk audio while the user browses Instagram.',
+    })
     .finally(() => { creatingOffscreen = null; });
   return creatingOffscreen;
 }
 
+async function toOffscreen(type, data) {
+  await ensureOffscreen();
+  const res = await chrome.runtime.sendMessage({ target: 'offscreen', type, data: data || {} });
+  return res || fail(ERR.OFFSCREEN_FAILED, 'No response from offscreen document');
+}
+
 async function handle(msg, sender) {
-  const data = msg.data || {};
+  const data = (msg && msg.data) || {};
   switch (msg.type) {
     case MSG.ASK:
     case MSG.STYLE_ADVICE: {
-      const key = (await chrome.storage.local.get(STORAGE_KEYS.API_KEY))?.[STORAGE_KEYS.API_KEY];
-      if (!key) return fail(ERR.NO_KEY, 'No API key saved');
-      const text = msg.type === MSG.ASK
-        ? JSON.stringify({ reply: 'Stub reply from the background worker.', highlightTarget: null, memoryUpdate: null })
-        : 'Stub style advice from the background worker.';
-      return ok({ text, model: MODELS.brain });
+      const got = await chrome.storage.local.get(STORAGE_KEYS.API_KEY);
+      if (!got[STORAGE_KEYS.API_KEY]) {
+        // Stub still answers so the UI can be exercised without a key.
+        console.log('[grammy/bg] (stub) no API key set; returning fake reply');
+      }
+      const fakeJson = JSON.stringify({
+        reply: "It's a sunrise shot from the Cliffs of Moher on 35mm film, and the comments are all about that light.",
+        highlightTarget: null,
+        memoryUpdate: null,
+      });
+      return ok({ text: data.responseFormat === 'text' ? 'Warm golden-hour light, one accent colour, wide frame.' : fakeJson, model: MODELS.brain });
     }
     case MSG.SPEAK:
       return ok({ audioBase64: '', mime: 'audio/mpeg' });
     case MSG.TRANSCRIBE:
-      return ok({ text: "what's this post about?" });
+      return ok({ text: "what's this post about" });
     case MSG.GET_MEMORY:
-      return ok(await getMemory());
+      return ok(await readMemory());
     case MSG.SAVE_MEMORY:
-      return ok(await saveMemory(data.memory || {}));
+      return ok(await writeMemory(data.memory));
     case MSG.VOICE_START:
-    case MSG.VOICE_STOP: {
-      await ensureOffscreen();
-      const res = await chrome.runtime.sendMessage({ type: msg.type, data, target: 'offscreen' });
-      return res && typeof res.ok === 'boolean' ? res : fail(ERR.OFFSCREEN_FAILED, 'no answer from offscreen');
-    }
+      return toOffscreen(MSG.VOICE_START, data);
+    case MSG.VOICE_STOP:
+      return toOffscreen(MSG.VOICE_STOP, data);
     case MSG.OPEN_ONBOARDING:
       await chrome.runtime.openOptionsPage();
       return ok(null);
-    case MSG.GET_CONTEXT: {
-      // Ask the content script of the sender's tab (or the active tab).
-      const tabId = sender?.tab?.id ?? (await chrome.tabs.query({ active: true, currentWindow: true }))?.[0]?.id;
-      if (tabId == null) return fail(ERR.INTERNAL, 'no tab');
-      return chrome.tabs.sendMessage(tabId, { type: MSG.GET_CONTEXT, data: {}, target: 'content' });
-    }
     default:
-      return fail(ERR.UNKNOWN_TYPE, `bg does not handle ${msg.type}`);
+      return fail(ERR.UNKNOWN_TYPE, `Unknown message type: ${msg && msg.type}`);
   }
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (!msg || typeof msg.type !== 'string') return false;
-  if (msg.target === 'offscreen' || msg.target === 'content') return false; // not for bg
+  if (!msg || msg.target === 'offscreen') return false; // for the offscreen doc, not us
   handle(msg, sender)
     .then((res) => sendResponse(res))
-    .catch((e) => sendResponse(fail(ERR.INTERNAL, e?.message || String(e))));
+    .catch((e) => sendResponse(fail(ERR.INTERNAL, e && e.message)));
   return true; // async
 });

@@ -1,4 +1,4 @@
-# Project: <NAME> — Instagram AI assistant (Chrome extension)
+# Project: Grammy — Instagram AI assistant (Chrome extension)
 
 Hackathon build, 4 hours. Ship > perfect. No new dependencies without asking the lead.
 "Posts" = posts, reels and stories. DMs, notes and explore-grid thumbnails are out of scope.
@@ -6,8 +6,10 @@ FIRST BUILD = core features only. NO image generation of any kind in the first b
 Stretch features (bottom of file) are NOT built unless the lead explicitly assigns them.
 
 ## Existing working demo code — REUSE, do not reinvent
-demos/mic/        microphone access from the extension on instagram.com
-demos/highlight/  overlay that outlines an element to show the user what to click (stretch use)
+demos/mic-tts-test-insta/   microphone access from the extension on instagram.com (offscreen document
+                            on the extension origin records; the grant is made once on an extension page)
+demos/grammy_overlay_Test/  Shadow DOM overlay with IG-gradient styling, spring animations, bubble
+                            placement with viewport flipping, and button highlighting (stretch use)
 Read the relevant demo before writing your module and port its working parts.
 
 ## Stack
@@ -104,6 +106,15 @@ highlight(target) / clearHighlight()             // stretch; stub returns immedi
 startListening() ; stopListening() -> Blob ; transcribe(blob) -> string ; speak(text) -> Promise
 setStatus('green'|'yellow'|'red', message)
 getChips({ pageType, persona }) -> string[]      // static table, no model call in first build
+
+Orchestrator additions (defined precisely in shared/types.js — read it, it is the contract):
+mountOverlay() ; isMenuOpen() ; stopSpeaking() ; focusedPost(ctx) -> Post|null
+PILL.* (every pill string) / ERR.* / LIMITS.* / STORAGE_KEYS.* / MSG.* constants ; request(type, data) helper
+Module loading: src/content.js dynamic-imports src/main.js (orchestrator-owned hub); every folder's
+index.js is an ES module; modules import each other directly and reach bg only via request().
+No chrome.* or DOM access at module top level (so modules import cleanly in test pages and Node).
+askAssistant() APPLIES memoryUpdate itself (pins + history); the overlay re-reads getMemory() after.
+Voice recording runs in src/voice/offscreen.html (extension origin) so the onboarding mic grant applies.
 
 Message bus (chrome.runtime.sendMessage), type field:
 GET_CONTEXT | ASK | STYLE_ADVICE | SPEAK | TRANSCRIBE | STATUS | HIGHLIGHT | GET_MEMORY | SAVE_MEMORY |
