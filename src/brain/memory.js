@@ -380,3 +380,6 @@ export async function bumpPinned(ids) {
 export function _resetFallbackStore() {
   for (const k of Object.keys(fallbackStore)) delete fallbackStore[k];
 }
+
+/** Queue a one-line system note for the NEXT askAssistant() result (e.g. the real bus error). */
+export function queueNotice(msg) { pendingNotice = msg ? String(msg) : null; }

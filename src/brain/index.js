@@ -8,7 +8,7 @@
 import { MSG, LIMITS, ERR, request } from '../../shared/types.js';
 import {
   getMemory, saveMemory, pin, appendHistory,
-  isValidMemory, takeNotice, clearNotice, clampWords,
+  isValidMemory, takeNotice, clearNotice, queueNotice, clampWords,
 } from './memory.js';
 import { buildAskRequest, buildStyleRequest, focusedPostOf, hashtagsOf } from './build.js';
 import { parseModelReply, clampReply, clampWordCount } from './parse.js';
@@ -143,6 +143,7 @@ export async function askAssistant(input) {
     let succeeded = false;
     if (!res || res.ok !== true) {
       reply = cannedFor(res && res.error);
+      try { const er = res && res.error; if (er && er.code) queueNotice(`${er.code}: ${String(er.message || '').slice(0, 160)}`); } catch (e) { /* ignore */ }
     } else {
       const text = (res.data && (res.data.text || res.data.reply)) || '';
       const parsed = parseModelReply(text);           // row 10 handled inside

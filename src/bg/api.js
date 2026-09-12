@@ -153,15 +153,16 @@ async function postResponses({ fetchFn, apiKey, model, input, req }) {
     max_output_tokens: req && req.maxOutputTokens,
     reasoning: { effort: REASONING_EFFORT },
   };
-  if (req && req.responseFormat === 'json') {
-    body.text = { format: { type: 'json_object' } };
-  }
-  if (WEB_SEARCH && (!req || req.task !== 'side')) {
+  const useTools = WEB_SEARCH && (!req || req.task !== 'side');
+  if (useTools) {
     body.tools = [WEB_SEARCH_TOOL];
     body.tool_choice = 'auto';
+  } else if (req && req.responseFormat === 'json') {
+    // strict JSON mode is not combined with tools; the prompt asks for JSON and brain parses tolerantly
+    body.text = { format: { type: 'json_object' } };
   }
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), LIMITS.TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), useTools ? LIMITS.TIMEOUT_MS * 2.5 : LIMITS.TIMEOUT_MS);
   try {
     const res = await fetchFn(API.responses, {
       method: 'POST',
