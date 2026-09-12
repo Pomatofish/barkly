@@ -10,6 +10,13 @@ demos/mic-tts-test-insta/   microphone access from the extension on instagram.co
                             on the extension origin records; the grant is made once on an extension page)
 demos/grammy_overlay_Test/  Shadow DOM overlay with IG-gradient styling, spring animations, bubble
                             placement with viewport flipping, and button highlighting (stretch use)
+demos/fetch/                proven on live Instagram: passive capture of the GraphQL / api/v1 JSON the
+                            page ALREADY fetched (patched fetch/XHR in the page world, injected at
+                            document_start) → per-shortcode media URLs, video/image, caption, author,
+                            owner.is_private; plus "which article is on screen" and shortcode lookup.
+                            Allowed as a SECONDARY source for context (it sends no extra requests).
+                            The rendered DOM stays the primary source. src/context/early.js is the
+                            document_start slot for the injector (already in manifest.json).
 Read the relevant demo before writing your module and port its working parts.
 
 ## Stack
