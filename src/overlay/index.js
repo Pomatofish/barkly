@@ -494,6 +494,7 @@ async function runAsk({ text, inputMode }) {
     showTyping(false);
     session.push({ role: 'assistant', text: result.reply, ts: Date.now() });
     await deliverReply({ reply: result.reply, inputMode, menuOpen: isMenuOpen() });
+    if (result.highlightTarget) highlight(result.highlightTarget);
     if (result.notice) appendLog('system', result.notice);
     clearAttachedImage();
 
@@ -796,5 +797,97 @@ async function onForgetEverything() {
 /* =========================================================================
  * Stretch stubs
  * ========================================================================= */
-export function highlight(_target) { /* stretch: stub, returns immediately */ }
-export function clearHighlight() { /* stretch: stub, returns immediately */ }
+/* =========================================================================
+ * Highlight — ported lean from demos/grammy_overlay_Test: find the Instagram control by its
+ * aria-label, draw a pulsing IG-gradient ring around it and follow it for a few seconds.
+ * Never clicks anything.
+ * ========================================================================= */
+const HL_LABELS = {
+  like_button: ['Like', 'Unlike'],
+  save_button: ['Save', 'Remove'],
+  share_button: ['Share Post', 'Share'],
+  comment_box: ['Comment'],
+  caption_box: ['Write a caption...', 'Write a caption…'],
+};
+let hlRaf = 0;
+let hlTimer = 0;
+let hlEl = null;
+
+function hlVisible(el) {
+  if (!el || !el.isConnected) return false;
+  const r = el.getBoundingClientRect();
+  if (r.width < 4 || r.height < 4) return false;
+  const cs = getComputedStyle(el);
+  return cs.visibility !== 'hidden' && cs.display !== 'none';
+}
+
+function hlFind(target) {
+  const labels = (HL_LABELS[target] || []).map((s) => s.toLowerCase());
+  const cands = [];
+  if (target === 'comment_box' || target === 'caption_box') {
+    document.querySelectorAll('textarea, [contenteditable="true"]').forEach((el) => {
+      const l = ((el.getAttribute('aria-label') || el.getAttribute('placeholder') || '')).toLowerCase();
+      if ((target === 'comment_box' && /comment/.test(l)) || (target === 'caption_box' && /caption/.test(l))) cands.push(el);
+    });
+  }
+  document.querySelectorAll('svg[aria-label], [aria-label]:not(svg)').forEach((node) => {
+    const l = (node.getAttribute('aria-label') || '').trim().toLowerCase();
+    if (!labels.includes(l)) return;
+    const c = node.closest('a, button, [role="button"]') || node.parentElement || node;
+    const r = c.getBoundingClientRect();
+    if (r.width > innerWidth * 0.6 || r.height > innerHeight * 0.5) return;
+    if (target !== 'comment_box' && target !== 'caption_box' && r.width < 18) return; // tiny hearts on comments
+    cands.push(c);
+  });
+  let best = null; let bestD = Infinity;
+  for (const el of cands) {
+    if (!hlVisible(el)) continue;
+    const r = el.getBoundingClientRect();
+    const onScreen = r.bottom > 0 && r.top < innerHeight;
+    const d = Math.hypot(r.left + r.width / 2 - innerWidth / 2, r.top + r.height / 2 - innerHeight / 2) + (onScreen ? 0 : 5000);
+    if (d < bestD) { bestD = d; best = el; }
+  }
+  return best;
+}
+
+function hlTick() {
+  const ring = $('hlRing');
+  if (!ring || !hlEl) return;
+  if (!hlVisible(hlEl)) { ring.classList.remove('show'); hlRaf = requestAnimationFrame(hlTick); return; }
+  const r = hlEl.getBoundingClientRect();
+  const pad = 8;
+  ring.style.left = (r.left - pad) + 'px';
+  ring.style.top = (r.top - pad) + 'px';
+  ring.style.width = (r.width + pad * 2) + 'px';
+  ring.style.height = (r.height + pad * 2) + 'px';
+  ring.style.borderRadius = (Math.max(r.width, r.height) / Math.min(r.width, r.height) < 1.5 ? 999 : 14) + 'px';
+  ring.classList.add('show');
+  hlRaf = requestAnimationFrame(hlTick);
+}
+
+export function highlight(target) {
+  try {
+    clearHighlight();
+    if (!target || !HL_LABELS[target]) return;
+    const el = hlFind(target);
+    if (!el) return;
+    hlEl = el;
+    try { const r = el.getBoundingClientRect(); if (r.top < 80 || r.bottom > innerHeight - 80) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) { /* ignore */ }
+    hlRaf = requestAnimationFrame(hlTick);
+    hlTimer = setTimeout(clearHighlight, 12000);
+    const onClick = (e) => { if (e.composedPath().includes(el)) clearHighlight(); };
+    document.addEventListener('click', onClick, { capture: true, once: true });
+  } catch (e) {
+    console.warn('[grammy/overlay] highlight failed', e);
+  }
+}
+
+export function clearHighlight() {
+  try {
+    cancelAnimationFrame(hlRaf); hlRaf = 0;
+    clearTimeout(hlTimer); hlTimer = 0;
+    hlEl = null;
+    $('hlRing')?.classList.remove('show');
+  } catch (e) { /* ignore */ }
+}
+

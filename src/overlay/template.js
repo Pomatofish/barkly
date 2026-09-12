@@ -48,6 +48,7 @@ export function buildHTML() {
 
   <div class="dock" id="dock">
     <div class="bubble" id="bubble"></div>
+    <div class="hl-ring" id="hlRing" aria-hidden="true"></div>
     <button class="mascot" id="mascot" aria-label="Open Grammy" title="Grammy">🐶</button>
   </div>
 </div>`;

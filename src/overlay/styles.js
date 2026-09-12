@@ -50,6 +50,11 @@ input { font: inherit; color: inherit; }
   50% { box-shadow: 0 6px 20px rgba(0,0,0,.18), 0 0 0 2px #fff, 0 0 0 10px rgba(220,39,67,0); }
 }
 
+/* ---------------- highlight ring (how do I…) ---------------- */
+.hl-ring { position: fixed; left: 0; top: 0; z-index: 2147483646; pointer-events: none; opacity: 0; transition: opacity .25s ease; box-sizing: border-box; border: 3px solid transparent; background: linear-gradient(#fff0,#fff0) padding-box, linear-gradient(45deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888) border-box; box-shadow: 0 0 0 4px rgba(220,39,67,.18), 0 0 24px rgba(214,41,118,.45); }
+.hl-ring.show { opacity: 1; animation: grammy-hl 1.6s ease-in-out infinite; }
+@keyframes grammy-hl { 0%, 100% { box-shadow: 0 0 0 4px rgba(220,39,67,.18), 0 0 24px rgba(214,41,118,.45); } 50% { box-shadow: 0 0 0 10px rgba(220,39,67,.08), 0 0 34px rgba(214,41,118,.65); } }
+
 /* ---------------- speech bubble ---------------- */
 .bubble {
   position: fixed; max-width: 280px; z-index: 2147483647;
