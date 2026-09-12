@@ -59,7 +59,12 @@ input { font: inherit; color: inherit; }
   transition: opacity .2s ease, transform .2s ${SPRING};
   pointer-events: none; white-space: pre-wrap; word-break: break-word;
 }
-.bubble.show { opacity: 1; transform: none; pointer-events: auto; cursor: pointer; }
+.bubble::after { content: ''; position: absolute; right: 22px; bottom: -8px; width: 14px; height: 14px; background: #fff; border-right: 1px solid #dbdbdb; border-bottom: 1px solid #dbdbdb; transform: rotate(45deg); }
+.bubble.show { opacity: 1; transform: none; pointer-events: auto; cursor: pointer; animation: grammy-bubble-in .45s ${SPRING} both, grammy-float 3.2s ease-in-out .45s infinite; }
+.bubble.show.speaking { box-shadow: 0 8px 24px rgba(0,0,0,.14), 0 0 0 3px rgba(220,39,67,.18); animation: grammy-bubble-in .45s ${SPRING} both, grammy-speak 1.4s ease-in-out .45s infinite; }
+@keyframes grammy-bubble-in { 0% { opacity: 0; transform: scale(.6) translateY(12px); } 60% { opacity: 1; transform: scale(1.06) translateY(-3px); } 100% { opacity: 1; transform: none; } }
+@keyframes grammy-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+@keyframes grammy-speak { 0%, 100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-3px) scale(1.015); } }
 
 /* ---------------- chat panel ---------------- */
 .panel {

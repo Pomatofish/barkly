@@ -144,14 +144,14 @@ function wireEvents() {
     panel.addEventListener(type, (e) => e.stopPropagation());
   }
 
-  bubble.addEventListener('click', () => { hideBubble(); setMenuOpen(true); });
+  bubble.addEventListener('click', () => { hideBubble(true); setMenuOpen(true); });
   closeBtn.addEventListener('click', () => setMenuOpen(false));
   gearBtn.addEventListener('click', () => { try { deps.request(MSG.OPEN_ONBOARDING); } catch (e) { console.warn(e); } });
 
   attachMascotGestures(mascot, {
     dragThreshold: 6,
     longPressMs: LIMITS.LONG_PRESS_MS,
-    onTap: () => { hideBubble(); setMenuOpen(!menuOpen); },
+    onTap: () => { hideBubble(true); setMenuOpen(!menuOpen); },
     onLongPressStart: () => beginPTT('mascot'),
     onLongPressEnd: () => endPTT(),
     onDragStart: () => dockStartDrag(),
@@ -304,16 +304,29 @@ async function saveDockPosition(pos) {
  * ========================================================================= */
 let bubbleTimer = 0;
 
-function showBubble(fullText) {
+let bubbleLocked = false; // true while the reply is being spoken: only a tap may dismiss it
+function showBubble(fullText, lock = false) {
   const bubble = $('bubble');
   const dock = $('dock');
   if (!bubble || !dock) return;
   clearTimeout(bubbleTimer);
+  bubbleLocked = !!lock;
+  bubble.classList.remove('show');
+  void bubble.offsetWidth; // restart the pop-in animation
   bubble.classList.add('show');
+  bubble.classList.toggle('speaking', !!lock);
   bubble.style.maxWidth = '280px';
   bubble.textContent = fullText;
   positionBubble(fullText);
-  bubbleTimer = setTimeout(hideBubble, LIMITS.BUBBLE_MS);
+  if (!lock) bubbleTimer = setTimeout(() => hideBubble(true), LIMITS.BUBBLE_MS);
+}
+
+/** Speech finished: unlock and start the normal auto-dismiss timer. */
+function releaseBubble() {
+  bubbleLocked = false;
+  $('bubble')?.classList.remove('speaking');
+  clearTimeout(bubbleTimer);
+  bubbleTimer = setTimeout(() => hideBubble(true), LIMITS.BUBBLE_MS);
 }
 
 function positionBubble(fullText) {
@@ -337,8 +350,12 @@ function positionBubble(fullText) {
   }
 }
 
-function hideBubble() {
-  $('bubble')?.classList.remove('show');
+function hideBubble(force = false) {
+  if (bubbleLocked && !force) return;
+  bubbleLocked = false;
+  clearTimeout(bubbleTimer);
+  const b = $('bubble');
+  if (b) { b.classList.remove('show'); b.classList.remove('speaking'); }
 }
 
 function bounceMascot() {
@@ -509,10 +526,14 @@ export async function deliverReply(input) {
   try {
     const { reply, inputMode, menuOpen: open } = input || {};
     const text = reply == null ? '' : String(reply);
-    if (!open) showBubble(text); else hideBubble();
+    const speakIt = inputMode === 'voice';
+    if (!open) showBubble(text, speakIt); else hideBubble(true);
     appendLog('assistant', text);
     bounceMascot();
-    if (inputMode === 'voice') await deps.speak(text); // row 19: bubble+log render first, then speak
+    if (speakIt) {
+      await deps.speak(text); // row 19: bubble+log render first, then speak the SAME string
+      if (!open) releaseBubble(); // stays up while speaking, then the normal 8 s timer
+    }
   } catch (e) {
     console.warn('[grammy/overlay] deliverReply failed', e);
   }
