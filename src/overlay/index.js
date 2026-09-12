@@ -473,6 +473,18 @@ async function safeGetMemory() {
   catch (e) { return defaultMemory(); }
 }
 
+/** Local intent guess so "how do I …" always points at the control, even if the model forgets. */
+function guessHighlightTarget(text) {
+  const q = String(text || '').toLowerCase();
+  if (!/(how|where|show|teach|help)/.test(q)) return null;
+  if (/(like|heart|love)/.test(q)) return 'like_button';
+  if (/(save|bookmark|keep)/.test(q)) return 'save_button';
+  if (/(share|send|forward|repost)/.test(q)) return 'share_button';
+  if (/caption/.test(q)) return 'caption_box';
+  if (/(comment|reply|respond)/.test(q)) return 'comment_box';
+  return null;
+}
+
 async function runAsk({ text, inputMode }) {
   try {
     session.push({ role: 'user', text, inputMode, ts: Date.now() });
@@ -499,7 +511,8 @@ async function runAsk({ text, inputMode }) {
     showTyping(false);
     session.push({ role: 'assistant', text: result.reply, ts: Date.now() });
     await deliverReply({ reply: result.reply, inputMode, menuOpen: isMenuOpen() });
-    if (result.highlightTarget) highlight(result.highlightTarget);
+    const target = result.highlightTarget || guessHighlightTarget(text);
+    if (target) highlight(target);
     if (result.notice) appendLog('system', result.notice);
     clearAttachedImage();
 
