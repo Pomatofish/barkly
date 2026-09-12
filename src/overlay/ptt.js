@@ -112,14 +112,14 @@ export function attachHoldToTalk(el, { onStart, onEnd }) {
 export function attachSpacebarHoldToTalk({ isBlocked, onStart, onEnd }) {
   let active = false;
   function onKeydown(e) {
-    if (e.code !== 'Space' || e.repeat || active) return;
+    if (e.code !== 'Backquote' || e.repeat || active) return;
     if (isBlocked()) return;
     active = true;
     try { e.preventDefault(); } catch (_) { /* ignore */ }
     try { onStart(); } catch (err) { console.warn('[grammy/overlay] space onStart', err); }
   }
   function onKeyup(e) {
-    if (e.code !== 'Space' || !active) return;
+    if (e.code !== 'Backquote' || !active) return;
     active = false;
     try { onEnd(); } catch (err) { console.warn('[grammy/overlay] space onEnd', err); }
   }
