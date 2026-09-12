@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  body {
+    width: 270px;
+    margin: 0;
+    padding: 16px;
+    background: #eef0ea;
+    color: #16211f;
+    font: 14px/1.5 "Iowan Old Style", Palatino, Georgia, serif;
+  }
+  h1 { margin: 0 0 .5rem; font-size: 15px; font-weight: 600; }
+  p { margin: 0 0 .8rem; color: #61695f; font-size: 12.5px; }
+  button {
+    display: block;
+    width: 100%;
+    margin-bottom: .4rem;
+    padding: .5rem;
+    background: #16211f;
+    color: #eef0ea;
+    border: none;
+    border-radius: 2px;
+    font: inherit;
+    cursor: pointer;
+  }
+  button.ghost { background: none; color: #16211f; border: 1px solid #c9cec4; }
+  #note { font-size: 11.5px; margin-top: .6rem; }
+</style>
+</head>
+<body>
+  <h1>Mic + TTS Probe</h1>
+  <p>Text to speech works straight from here. Microphone access does not, because the popup closes the moment Chrome's prompt takes focus.</p>
+  <button id="open">Open the test page</button>
+  <button id="speak" class="ghost">Speak a test line</button>
+  <button id="tryMic" class="ghost">Try the mic here anyway</button>
+  <p id="note"></p>
+  <script src="popup.js"></script>
+</body>
+</html>

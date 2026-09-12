@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Mic + TTS Probe</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<header>
+  <h1>Mic + TTS Probe</h1>
+  <p class="sub">Everything below runs on the extension's own origin, so permissions granted here stick to the extension and not to any website.</p>
+  <dl class="status">
+    <dt>Extension origin</dt><dd id="origin">—</dd>
+    <dt>Microphone permission</dt><dd id="permState">checking…</dd>
+    <dt>SpeechRecognition</dt><dd id="srAvail">—</dd>
+    <dt>chrome.tts</dt><dd id="ttsAvail">—</dd>
+  </dl>
+</header>
+
+<section>
+  <h2>1. Capture the microphone</h2>
+  <p>First click triggers Chrome's permission prompt. After you allow it once, it stays allowed for this extension.</p>
+  <div class="row">
+    <button id="grantNow">Grant microphone access</button>
+    <button id="micStart">Start microphone</button>
+    <button id="micStop" disabled>Stop microphone</button>
+  </div>
+  <div class="meter" aria-hidden="true"><span id="bar"></span></div>
+  <p class="hint">The bar tracks input level. Talk into the mic to confirm audio is actually flowing.</p>
+</section>
+
+<section>
+  <h2>2. Speech to text</h2>
+  <p>Uses the browser's built-in recognizer. Chrome streams the audio to Google's servers, so it needs a network connection.</p>
+  <div class="row">
+    <label for="lang">Language</label>
+    <select id="lang">
+      <option value="en-US">English (US)</option>
+      <option value="en-SG">English (Singapore)</option>
+      <option value="en-GB">English (UK)</option>
+      <option value="zh-CN">Chinese (Mandarin)</option>
+      <option value="ms-MY">Malay</option>
+      <option value="ta-IN">Tamil</option>
+    </select>
+    <button id="srStart">Start listening</button>
+    <button id="srStop" disabled>Stop listening</button>
+  </div>
+  <div class="transcript">
+    <p id="finalText" class="final">Nothing recognised yet.</p>
+    <p id="interimText" class="interim"></p>
+  </div>
+</section>
+
+<section>
+  <h2>3. Text to speech</h2>
+  <p>Two independent paths. The extension API needs the <code>tts</code> permission; the web API needs nothing at all.</p>
+  <textarea id="speakText" rows="3">If you can hear this, text to speech is working inside the extension.</textarea>
+  <div class="row">
+    <label for="rate">Rate <output id="rateOut">1.0</output></label>
+    <input type="range" id="rate" min="0.5" max="2" step="0.1" value="1">
+    <label for="pitch">Pitch <output id="pitchOut">1.0</output></label>
+    <input type="range" id="pitch" min="0" max="2" step="0.1" value="1">
+  </div>
+  <div class="row">
+    <button id="ttsChrome">Speak via chrome.tts</button>
+    <button id="ttsWeb">Speak via speechSynthesis</button>
+    <button id="ttsBg">Speak from service worker</button>
+    <button id="ttsStop">Stop speaking</button>
+  </div>
+  <div class="row">
+    <button id="listVoices" class="ghost">List available voices</button>
+  </div>
+</section>
+
+<section>
+  <h2>4. Round trip</h2>
+  <p>Listens, then reads your words back. This is the part that proves mic and speaker can coexist without fighting each other.</p>
+  <div class="row">
+    <button id="echoStart">Start echo mode</button>
+    <button id="echoStop" disabled>Stop echo mode</button>
+  </div>
+</section>
+
+<section class="logwrap">
+  <h2>Log</h2>
+  <div id="log"></div>
+</section>
+
+<script src="app.js"></script>
+</body>
+</html>

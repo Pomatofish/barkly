@@ -1,0 +1,11 @@
+{
+  "name": "grammy-instagram-assistant",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Chrome MV3 extension: a voice-first AI assistant inside Instagram. No build step, no dependencies.",
+  "type": "module",
+  "scripts": {
+    "serve": "node tools/serve.js",
+    "test": "node --test src/**/*.test.js"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "IG Overlay — Mic + TTS Probe",
+  "version": "1.2.0",
+  "description": "Feasibility probe: microphone capture and text-to-speech from an overlay injected into Instagram web.",
+  "permissions": ["tts", "storage", "offscreen", "tabs"],
+  "host_permissions": ["https://www.instagram.com/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Mic + TTS Probe"
+  },
+  "options_page": "app.html",
+  "content_scripts": [
+    {
+      "matches": ["https://www.instagram.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["app.html", "offscreen.html"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

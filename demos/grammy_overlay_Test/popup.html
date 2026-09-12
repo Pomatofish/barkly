@@ -1,0 +1,40 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Grammy Overlay</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <span class="orb"></span>
+    <div class="title">
+      <h1>Grammy</h1>
+      <p>Instagram overlay test</p>
+    </div>
+    <span id="dot" class="dot" title="Connection to the page"></span>
+  </header>
+
+  <form id="ask" class="ask">
+    <input id="askInput" type="text" placeholder="Ask… “how do I share this?”" autocomplete="off" spellcheck="false">
+    <button type="submit" aria-label="Ask">
+      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h9M8.5 4l4 4-4 4" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+  </form>
+
+  <h2>Point at a button</h2>
+  <div id="targets" class="grid"></div>
+
+  <div class="row">
+    <button id="tour" class="btn primary">Guided tour</button>
+    <button id="scan" class="btn">Scan page</button>
+    <button id="clear" class="btn">Clear</button>
+  </div>
+
+  <label class="toggle"><input type="checkbox" id="dim" checked><span class="sw"></span>Dim the page around targets</label>
+  <label class="toggle"><input type="checkbox" id="dock" checked><span class="sw"></span>Show in-page assistant <kbd>Alt+G</kbd></label>
+
+  <p id="status" class="status"></p>
+  <script src="popup.js"></script>
+</body>
+</html>
