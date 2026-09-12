@@ -1,0 +1,361 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Grammy overlay test</title>
+<style>
+  body { font: 13px/1.4 monospace; padding: 16px; background: #111; color: #ddd; }
+  #out { white-space: pre-wrap; }
+  .pass { color: #6f6; }
+  .fail { color: #f66; }
+</style>
+</head>
+<body>
+<h3>Grammy overlay test</h3>
+<pre id="out">running…</pre>
+
+<!-- Plain (non-module) script so the chrome shim exists before ANY module (including transitive
+     imports of overlay/index.js) evaluates its top-level code, even though no module here is
+     allowed to touch chrome.* at import time anyway — belt and suspenders. -->
+<script>
+  (function () {
+    const storage = {};
+    globalThis.chrome = {
+      runtime: {
+        sendMessage: (_msg) => Promise.resolve({ ok: true, data: null }),
+        getURL: (p) => p,
+        onMessage: { addListener() {}, removeListener() {} },
+        openOptionsPage: () => {},
+      },
+      storage: {
+        local: {
+          get: (key) => {
+            return new Promise((resolve) => {
+              if (key == null) return resolve({ ...storage });
+              if (typeof key === 'string') return resolve(key in storage ? { [key]: storage[key] } : {});
+              if (Array.isArray(key)) {
+                const out = {};
+                for (const k of key) if (k in storage) out[k] = storage[k];
+                return resolve(out);
+              }
+              resolve({ ...storage });
+            });
+          },
+          set: (obj) => { Object.assign(storage, obj); return Promise.resolve(); },
+        },
+      },
+    };
+  })();
+</script>
+
+<script type="module">
+import { LIMITS, ERR, PILL, defaultMemory } from '../../shared/types.js';
+import * as brainMod from '../brain/index.js';
+import * as voiceMod from '../voice/index.js';
+import * as contextMod from '../context/index.js';
+import { mountOverlay, deliverReply, setStatus, isMenuOpen, __setDeps } from './index.js';
+import { downscaleImageFile } from './image.js';
+
+const results = [];
+const warnings = [];
+const origWarn = console.warn.bind(console);
+console.warn = (...args) => { warnings.push(args.map(String).join(' ')); origWarn(...args); };
+window.addEventListener('error', (e) => warnings.push('window.onerror: ' + (e.error && e.error.stack || e.message)));
+function check(name, cond, detail) {
+  results.push({ name, pass: !!cond, detail: detail || '' });
+}
+function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+// Real image decode (FileReader + <img>.onload) is not accelerated by --virtual-time-budget the
+// way plain setTimeout is, so a single fixed sleep races it. Poll instead, yielding real turns
+// of the event loop so the decode thread's completion callback gets a chance to run.
+async function waitFor(fn, { timeout = 8000, step = 40 } = {}) {
+  const start = Date.now();
+  for (;;) {
+    let v;
+    try { v = fn(); } catch (e) { v = false; }
+    if (v) return true;
+    if (Date.now() - start > timeout) return false;
+    await sleep(step);
+  }
+}
+
+function baseCtx(overrides) {
+  return Object.assign({
+    pageType: 'post',
+    posts: [{
+      id: 'p1', username: 'lena.explores', caption: 'hello world', altText: null,
+      likes: 10, commentCount: 2, postedAt: null, comments: ['a: hi'], isPrivate: false,
+      mediaType: 'image', mediaUrl: null,
+    }],
+    focusedPostId: 'p1',
+    draftCaption: null,
+    url: 'https://www.instagram.com/p/p1/',
+  }, overrides || {});
+}
+
+async function run() {
+  // ---- fixed dependency set shared by most tests: real getMemory/unpin/forgetAll/getChips
+  // (from the actual brain stub) so remembered-panel + chip tests exercise real behaviour,
+  // with getPageContext/onNavigate/startListening/etc. overridable per test.
+  let ctxOverride = baseCtx();
+  let navCb = null;
+  const callOrder = [];
+
+  __setDeps({
+    getPageContext: async () => ctxOverride,
+    onNavigate: (cb) => { navCb = cb; return () => {}; },
+    describeStatus: contextMod.describeStatus,
+    focusedPost: contextMod.focusedPost,
+    getMemory: brainMod.getMemory,
+    saveMemory: brainMod.saveMemory,
+    unpin: brainMod.unpin,
+    forgetAll: brainMod.forgetAll,
+    getChips: brainMod.getChips,
+    askAssistant: async (input) => {
+      callOrder.push('askAssistant');
+      window.__lastAskInput = input;
+      return { reply: 'stub reply', highlightTarget: null, memoryUpdate: null, notice: null };
+    },
+    styleAdvice: brainMod.styleAdvice,
+    startListening: async () => { callOrder.push('startListening'); return { ok: true }; },
+    stopListening: async () => { callOrder.push('stopListening'); return new Blob([1, 2, 3], { type: 'audio/webm' }); },
+    transcribe: async () => { callOrder.push('transcribe'); return 'what is going on here'; },
+    speak: async (t) => { callOrder.push('speak:' + t); },
+    stopSpeaking: () => {},
+  });
+
+  mountOverlay();
+  await sleep(30);
+
+  const host = document.getElementById('grammy-host');
+  check('mountOverlay creates the shadow host', !!(host && host.shadowRoot), 'host=' + !!host);
+  const root = host.shadowRoot;
+  const $ = (id) => root.getElementById(id);
+
+  // ---------------------------------------------------------------
+  // T1 — deliverReply: bubble shown when menu closed, hidden + log-only when menu open
+  // ---------------------------------------------------------------
+  await deliverReply({ reply: 'Test reply one', inputMode: 'text', menuOpen: false });
+  const bubble = $('bubble');
+  const log = $('log');
+  check('T1a bubble shows when menu closed', bubble.classList.contains('show') && bubble.textContent.includes('Test reply one'),
+    'bubble.show=' + bubble.classList.contains('show') + ' text=' + JSON.stringify(bubble.textContent));
+  check('T1b log has the same reply text (menu closed)', [...log.children].some((c) => c.textContent === 'Test reply one'));
+
+  await deliverReply({ reply: 'Test reply two', inputMode: 'text', menuOpen: true });
+  check('T1c bubble hidden when menu open', !bubble.classList.contains('show'), 'bubble.show=' + bubble.classList.contains('show'));
+  check('T1d log has the reply text (menu open)', [...log.children].some((c) => c.textContent === 'Test reply two'));
+
+  // ---------------------------------------------------------------
+  // T2 — chips change with pageType and with persona
+  // ---------------------------------------------------------------
+  const chipsBeforeText = () => [...$('chips').children].map((c) => c.textContent);
+  const chipsPostCasual = chipsBeforeText();
+  ctxOverride = baseCtx({ pageType: 'reel', posts: [], focusedPostId: null });
+  navCb && navCb('https://www.instagram.com/reel/x/');
+  await sleep(30);
+  const chipsReelCasual = chipsBeforeText();
+  check('T2a chips change when pageType changes', JSON.stringify(chipsPostCasual) !== JSON.stringify(chipsReelCasual),
+    'post=' + JSON.stringify(chipsPostCasual) + ' reel=' + JSON.stringify(chipsReelCasual));
+
+  $('personaInfluencer').dispatchEvent(new Event('click', { bubbles: true }));
+  await sleep(30);
+  const chipsReelInfluencer = chipsBeforeText();
+  const expectedInfluencer = brainMod.getChips({ pageType: 'reel', persona: 'influencer', pageContext: ctxOverride });
+  check('T2b chips change when persona toggled', JSON.stringify(chipsReelInfluencer) === JSON.stringify(expectedInfluencer),
+    'got=' + JSON.stringify(chipsReelInfluencer) + ' want=' + JSON.stringify(expectedInfluencer));
+  check('T2c persona button reflects active state', $('personaInfluencer').classList.contains('active'));
+
+  // ---------------------------------------------------------------
+  // T2d — getChips is called with the CURRENT PageContext (same url/focusedPostId that
+  // getPageContext just returned), not just {pageType, persona}. This is the seam brain
+  // relies on to prepend "Paste the caption" / append "Match this style".
+  // ---------------------------------------------------------------
+  let chipsSpyArg = null;
+  __setDeps({ getChips: (a) => { chipsSpyArg = a; return brainMod.getChips(a); } });
+  const ctxForSpy = baseCtx({ pageType: 'profile', focusedPostId: null, posts: [], url: 'https://www.instagram.com/spycheck/' });
+  ctxOverride = ctxForSpy;
+  navCb && navCb(ctxForSpy.url);
+  await sleep(30);
+  const gotCtx = chipsSpyArg && chipsSpyArg.pageContext;
+  check('T2d getChips receives the current pageContext (matching url/focusedPostId)',
+    !!gotCtx && gotCtx.url === ctxForSpy.url && gotCtx.focusedPostId === ctxForSpy.focusedPostId,
+    'gotCtx=' + JSON.stringify(gotCtx && { url: gotCtx.url, focusedPostId: gotCtx.focusedPostId }));
+  __setDeps({ getChips: brainMod.getChips }); // restore the real thing for the rest of the suite
+
+  // ---------------------------------------------------------------
+  // T2e/T2f — a real brain.getChips() call, through the overlay, for a focused post whose
+  // caption is null renders "Paste the caption" (row 4); clicking that chip focuses the text
+  // input rather than running the ask flow.
+  // ---------------------------------------------------------------
+  const noCaptionCtx = baseCtx({
+    pageType: 'post',
+    posts: [{
+      id: 'p2', username: 'lena.explores', caption: null, altText: null,
+      likes: 5, commentCount: 0, postedAt: null, comments: [], isPrivate: false,
+      mediaType: 'image', mediaUrl: null,
+    }],
+    focusedPostId: 'p2',
+    url: 'https://www.instagram.com/p/p2/',
+  });
+  ctxOverride = noCaptionCtx;
+  navCb && navCb(noCaptionCtx.url);
+  await sleep(30);
+  const pasteChip = [...$('chips').children].find((c) => c.textContent === 'Paste the caption');
+  check('T2e "Paste the caption" chip appears when the focused post has no caption', !!pasteChip,
+    'chips=' + JSON.stringify(chipsBeforeText()));
+
+  $('closeBtn').dispatchEvent(new Event('click', { bubbles: true })); // make sure we start closed
+  await sleep(20);
+  pasteChip && pasteChip.dispatchEvent(new Event('click', { bubbles: true }));
+  await sleep(30);
+  check('T2f clicking "Paste the caption" opens the menu and focuses the text input (not the ask flow)',
+    isMenuOpen() && root.activeElement === $('textInput'),
+    'menuOpen=' + isMenuOpen() + ' activeElement=' + (root.activeElement && root.activeElement.id));
+
+  // reset context back to a normal post w/ influencer persona already set for later tests
+  ctxOverride = baseCtx();
+  navCb && navCb('https://www.instagram.com/p/p1/');
+  await sleep(30);
+  // put persona back to casual for the rest of the suite (cosmetic)
+  $('personaCasual').dispatchEvent(new Event('click', { bubbles: true }));
+  await sleep(30);
+
+  // ---------------------------------------------------------------
+  // T3 — attach image: preview shows; next askAssistant call gets a data:image/jpeg URL whose
+  // longest edge is <= LIMITS.IMAGE_MAX_PX
+  // ---------------------------------------------------------------
+  const bigCanvas = document.createElement('canvas');
+  bigCanvas.width = 2000;
+  bigCanvas.height = 1500;
+  const cctx = bigCanvas.getContext('2d');
+  cctx.fillStyle = '#ff8800';
+  cctx.fillRect(0, 0, bigCanvas.width, bigCanvas.height);
+  const blob = await new Promise((resolve) => bigCanvas.toBlob(resolve, 'image/png'));
+  const file = new File([blob], 'photo.png', { type: 'image/png' });
+  const dt = new DataTransfer();
+  dt.items.add(file);
+  const fileInput = $('fileInput');
+  fileInput.files = dt.files;
+  fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+  // FileReader + <img> decode + canvas re-encode run as real (non-virtual-time) async work;
+  // poll rather than sleep a fixed amount so we don't race the decode thread.
+  const preview = $('attachPreview');
+  const thumb = $('attachThumb');
+  const previewShown = await waitFor(() => !preview.hidden && !!thumb.src && thumb.src.startsWith('data:'), { timeout: 8000 });
+  check('T3a attach preview visible with a thumbnail src', previewShown,
+    'hidden=' + preview.hidden + ' src=' + (thumb.src || '').slice(0, 30));
+
+  window.__lastAskInput = null;
+  $('textInput').value = 'match my style please';
+  $('sendBtn').dispatchEvent(new Event('click', { bubbles: true }));
+  await waitFor(() => !!window.__lastAskInput, { timeout: 3000 });
+  const sentImage = window.__lastAskInput && window.__lastAskInput.attachedImage;
+  check('T3b askAssistant received attachedImage as a data:image/jpeg URL', typeof sentImage === 'string' && sentImage.startsWith('data:image/jpeg'),
+    'sentImage head=' + (sentImage || '').slice(0, 24));
+
+  let longestEdgeOk = false;
+  if (sentImage) {
+    const img = await new Promise((resolve, reject) => {
+      const im = new Image();
+      im.onload = () => resolve(im);
+      im.onerror = reject;
+      im.src = sentImage;
+    });
+    longestEdgeOk = Math.max(img.naturalWidth, img.naturalHeight) <= LIMITS.IMAGE_MAX_PX;
+    check('T3c decoded image longest edge <= IMAGE_MAX_PX', longestEdgeOk, `${img.naturalWidth}x${img.naturalHeight}`);
+  } else {
+    check('T3c decoded image longest edge <= IMAGE_MAX_PX', false, 'no image to decode');
+  }
+  const clearedAfterSend = await waitFor(() => $('attachPreview').hidden === true, { timeout: 2000 });
+  check('T3d attached image cleared after send', clearedAfterSend);
+
+  // ---------------------------------------------------------------
+  // T4 — Remembered panel lists pins seeded via brain.pin(); delete removes it everywhere
+  // ---------------------------------------------------------------
+  const pinned = await brainMod.pin({ kind: 'fact', content: 'Loves golden hour shots', source: { username: 'lena.explores' } });
+  const pinId = pinned.pinned[pinned.pinned.length - 1].id;
+  // trigger any ask so the overlay re-reads getMemory() and re-renders the Remembered panel
+  $('textInput').value = 'hi again';
+  $('sendBtn').dispatchEvent(new Event('click', { bubbles: true }));
+  await sleep(50);
+
+  const rememberedList = $('rememberedList');
+  const hasPinRow = [...rememberedList.querySelectorAll('.pin-content')].some((el) => el.textContent === 'Loves golden hour shots');
+  check('T4a Remembered panel lists the seeded pin', hasPinRow);
+
+  const delBtn = [...rememberedList.querySelectorAll('.pin-row')]
+    .find((row) => row.querySelector('.pin-content').textContent === 'Loves golden hour shots')
+    ?.querySelector('.pin-del');
+  delBtn && delBtn.dispatchEvent(new Event('click', { bubbles: true }));
+  await sleep(50);
+
+  const stillThereInPanel = [...rememberedList.querySelectorAll('.pin-content')].some((el) => el.textContent === 'Loves golden hour shots');
+  const memNow = await brainMod.getMemory();
+  const stillThereInMemory = memNow.pinned.some((p) => p.id === pinId);
+  check('T4b delete removes it from the panel', !stillThereInPanel);
+  check('T4c delete removes it from getMemory()', !stillThereInMemory);
+
+  // ---------------------------------------------------------------
+  // T5 — long-press on mascot: startListening -> stopListening -> transcribe -> askAssistant -> speak, in order
+  // ---------------------------------------------------------------
+  callOrder.length = 0;
+  const mascot = $('mascot');
+  const rect = mascot.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+  mascot.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 101, clientX: cx, clientY: cy, bubbles: true }));
+  await sleep(LIMITS.LONG_PRESS_MS + 80);
+  mascot.dispatchEvent(new PointerEvent('pointerup', { pointerId: 101, clientX: cx, clientY: cy, bubbles: true }));
+  await sleep(80);
+
+  const seq = callOrder.filter((c) => !c.startsWith('speak')).join(',');
+  const speakHappened = callOrder.some((c) => c.startsWith('speak'));
+  check('T5 long-press runs startListening -> stopListening -> transcribe -> askAssistant, then speaks the reply',
+    seq === 'startListening,stopListening,transcribe,askAssistant' && speakHappened,
+    'order=' + callOrder.join(','));
+
+  // ---------------------------------------------------------------
+  // T6 — startListening rejected (MIC_DENIED) hides PTT controls and sets PILL.MIC_OFF
+  // ---------------------------------------------------------------
+  __setDeps({ startListening: async () => ({ ok: false, error: { code: ERR.MIC_DENIED, message: 'denied' } }) });
+  const pttBtn = $('pttBtn');
+  pttBtn.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 202, bubbles: true }));
+  await sleep(30);
+  pttBtn.dispatchEvent(new PointerEvent('pointerup', { pointerId: 202, bubbles: true }));
+  await sleep(30);
+  check('T6a PTT button hidden after MIC_DENIED', $('pttBtn').hidden === true);
+  check('T6b pill shows PILL.MIC_OFF', $('pill').textContent === PILL.MIC_OFF.message && $('pill').className.includes('yellow'),
+    'pill=' + $('pill').className + ' / ' + $('pill').textContent);
+
+  // ---------------------------------------------------------------
+  // T7 — setStatus sets pill class + text directly
+  // ---------------------------------------------------------------
+  setStatus('red', 'x');
+  check('T7 setStatus sets pill class and text', $('pill').className.includes('red') && $('pill').textContent === 'x',
+    'pill=' + $('pill').className + ' / ' + $('pill').textContent);
+
+  // ---------------------------------------------------------------
+  render();
+}
+
+function render() {
+  const out = document.getElementById('out');
+  const lines = results.map((r) => (r.pass ? 'PASS' : 'FAIL') + ': ' + r.name + (r.detail ? '  (' + r.detail + ')' : ''));
+  const allPass = results.every((r) => r.pass);
+  lines.push('');
+  if (warnings.length) {
+    lines.push('--- warnings/errors ---');
+    for (const w of warnings) lines.push(w);
+    lines.push('');
+  }
+  lines.push(allPass ? 'ALL PASS' : 'SOME FAILED');
+  out.textContent = lines.join('\n');
+}
+
+run().catch((e) => {
+  const out = document.getElementById('out');
+  out.textContent = (out.textContent || '') + '\nFAIL: uncaught error: ' + (e && e.stack || e) + '\nSOME FAILED';
+});
+</script>
+</body>
+</html>

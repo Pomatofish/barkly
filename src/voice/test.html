@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Grammy voice — test</title>
+</head>
+<body>
+<pre id="out"></pre>
+<script type="module">
+import { ok, fail, ERR, MSG } from '../../shared/types.js';
+import * as recorder from './recorder.js';
+
+const out = document.getElementById('out');
+function line(s) {
+  out.textContent += s + '\n';
+  // eslint-disable-next-line no-console
+  console.log(s);
+}
+
+// --- test-only switches, flipped by the run() below ----------------------
+let forceMicDenied = false;
+let forceTtsFail = false;
+
+// 0.2s of silent 16-bit mono PCM, wrapped as a WAV file, base64-encoded.
+// Used as the fake TTS audio payload so speak() has something real to play.
+function buildSilentWavBase64(durationSec, sampleRate) {
+  sampleRate = sampleRate || 8000;
+  const numSamples = Math.floor(durationSec * sampleRate);
+  const blockAlign = 2; // 16-bit mono
+  const byteRate = sampleRate * blockAlign;
+  const dataSize = numSamples * blockAlign;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+  function writeString(offset, str) {
+    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+  }
+  writeString(0, 'RIFF');
+  view.setUint32(4, 36 + dataSize, true);
+  writeString(8, 'WAVE');
+  writeString(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // PCM
+  view.setUint16(22, 1, true); // mono
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, 16, true);
+  writeString(36, 'data');
+  view.setUint32(40, dataSize, true);
+  // PCM samples are left at 0 (silence) by the zero-initialised ArrayBuffer.
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+const SILENT_WAV_BASE64 = buildSilentWavBase64(0.2, 8000);
+
+// --- the shim: routes the bus messages voice/index.js sends -------------
+// VOICE_START / VOICE_STOP go straight to recorder.js (there is no real
+// offscreen document in this test page, so this shim plays that role).
+// TRANSCRIBE and SPEAK are answered with canned data.
+globalThis.chrome = {
+  runtime: {
+    async sendMessage(msg) {
+      const { type } = msg || {};
+      if (type === MSG.VOICE_START) {
+        if (forceMicDenied) return fail(ERR.MIC_DENIED, 'denied (test)');
+        const res = await recorder.startRecording();
+        if (res && res.ok) return ok({ started: true });
+        const err = (res && res.error) || {};
+        return fail(err.code || ERR.MIC_UNAVAILABLE, err.message || 'could not start');
+      }
+      if (type === MSG.VOICE_STOP) {
+        const res = await recorder.stopRecording();
+        if (res && res.ok) return ok(res.data);
+        const err = (res && res.error) || {};
+        return fail(err.code || ERR.MIC_UNAVAILABLE, err.message || 'could not stop');
+      }
+      if (type === MSG.TRANSCRIBE) {
+        return ok({ text: 'what is this post about' });
+      }
+      if (type === MSG.SPEAK) {
+        if (forceTtsFail) return fail(ERR.TTS_FAILED, 'tts failed (test)');
+        return ok({ audioBase64: SILENT_WAV_BASE64, mime: 'audio/wav' });
+      }
+      return fail(ERR.UNKNOWN_TYPE, String(type));
+    },
+  },
+};
+
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+const results = [];
+function record(name, passed, detail) {
+  results.push(passed);
+  line(`${passed ? 'PASS' : 'FAIL'}: ${name}${detail !== undefined ? ' — ' + detail : ''}`);
+}
+
+async function run() {
+  // shim is installed above; import the module under test now
+  const voice = await import('./index.js');
+
+  // 1. normal start -> wait ~500ms -> stop -> Blob
+  const startRes = await voice.startListening();
+  record('startListening() resolves {ok:true}', !!startRes && startRes.ok === true, JSON.stringify(startRes));
+
+  await sleep(500);
+
+  const blob = await voice.stopListening();
+  record(
+    'stopListening() returns a Blob with size>0 and audio/* type',
+    !!blob && blob.size > 0 && /^audio\//.test(blob.type),
+    blob ? `type=${blob.type} size=${blob.size}` : 'null'
+  );
+
+  // 2. transcribe
+  const text = await voice.transcribe(blob || new Blob([], { type: 'audio/webm' }));
+  record('transcribe() returns the shimmed text', text === 'what is this post about', JSON.stringify(text));
+
+  // 3. speak resolves under 3s
+  const t0 = performance.now();
+  await voice.speak('hello');
+  const dt = performance.now() - t0;
+  record('speak() resolves under 3s', dt < 3000, `${Math.round(dt)}ms`);
+
+  // 4. forced MIC_DENIED
+  forceMicDenied = true;
+  const deniedRes = await voice.startListening();
+  forceMicDenied = false;
+  record(
+    'startListening() resolves {ok:false, error:{code:MIC_DENIED}} without throwing',
+    !!deniedRes && deniedRes.ok === false && deniedRes.error && deniedRes.error.code === 'MIC_DENIED',
+    JSON.stringify(deniedRes)
+  );
+
+  // 5. forced TTS failure — speak() must resolve silently, never throw
+  forceTtsFail = true;
+  let threw = false;
+  try {
+    await voice.speak('hello again');
+  } catch (e) {
+    threw = true;
+  }
+  forceTtsFail = false;
+  record('speak() resolves silently on TTS failure (never throws)', threw === false);
+
+  // 6. stopListening() without a prior successful start returns null.
+  // (test 4's start never reached recorder.startRecording() because it was
+  // denied by the shim before that; test 1's recording session was already
+  // fully stopped, so recorder.js has nothing in flight here.)
+  const nullBlob = await voice.stopListening();
+  record('stopListening() without a prior start returns null', nullBlob === null, String(nullBlob));
+
+  const allPass = results.every(Boolean);
+  line(allPass ? 'ALL PASS' : 'SOME FAILED');
+}
+
+run().catch((e) => {
+  line('FAIL: uncaught error — ' + (e && e.stack || e));
+  line('SOME FAILED');
+});
+</script>
+</body>
+</html>

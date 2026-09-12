@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Grammy — context fixture tests</title>
+<style>
+  body { font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 24px; color: #111; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  p.sub { color: #666; margin: 0 0 16px; }
+  table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  th, td { border: 1px solid #ddd; padding: 4px 6px; text-align: left; vertical-align: top; }
+  th { background: #fafafa; font-weight: 600; }
+  td.pass { color: #0a7d28; font-weight: 600; }
+  td.fail { color: #c21f1f; font-weight: 600; }
+  #verdict { margin-top: 18px; font-size: 20px; font-weight: 700; }
+  #verdict.ok { color: #0a7d28; }
+  #verdict.bad { color: #c21f1f; }
+  pre { background: #fafafa; border: 1px solid #eee; padding: 10px; overflow-x: auto; font-size: 11px; }
+</style>
+</head>
+<body>
+<h1>Grammy — src/context fixture tests</h1>
+<p class="sub">Each fixture is fetched, its <code>&lt;!-- url: --&gt;</code> comment read, parsed with DOMParser and run through
+<code>getPageContext({ doc, url })</code> + <code>describeStatus()</code>. Fixtures run in order, so the privacy cache
+is primed by the profile pages (rows 1 and 2).</p>
+
+<table id="results">
+  <thead>
+    <tr>
+      <th>fixture</th><th>pageType</th><th>username</th><th>caption (60)</th><th>comments</th>
+      <th>commentCount</th><th>likes</th><th>media</th><th>focusedPostId</th><th>isPrivate</th><th>pill</th><th>result</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+<div id="verdict">RUNNING</div>
+<pre id="detail"></pre>
+
+<script type="module">
+import { getPageContext, describeStatus, focusedPost, onNavigate } from './index.js';
+import { PILL } from '../../shared/types.js';
+
+/* ------------------------------------------------------------------ helpers */
+const problems = [];
+function check(fixture, label, actual, expected) {
+  const okv = (typeof expected === 'function') ? expected(actual) : Object.is(actual, expected);
+  if (!okv) {
+    problems.push(`${fixture}: ${label} = ${JSON.stringify(actual)} (expected ${
+      typeof expected === 'function' ? (expected.desc || 'predicate') : JSON.stringify(expected)})`);
+  }
+  return okv;
+}
+const startsWith = (s) => { const f = (v) => typeof v === 'string' && v.startsWith(s); f.desc = `starts with ${JSON.stringify(s)}`; return f; };
+const endsWith = (s) => { const f = (v) => typeof v === 'string' && v.endsWith(s); f.desc = `ends with ${JSON.stringify(s)}`; return f; };
+
+/* -------------------------------------------------------------------- cases */
+// Order matters: the profile fixtures prime the per-username privacy cache.
+const CASES = [
+  {
+    file: 'profile.html',
+    expect(ctx) {
+      const p = focusedPost(ctx);
+      check('profile.html', 'pageType', ctx.pageType, 'profile');
+      check('profile.html', 'username', p && p.username, 'lena.explores');
+      check('profile.html', 'isPrivate', p && p.isPrivate, false);
+      check('profile.html', 'focusedPostId', ctx.focusedPostId, 'profile:lena.explores');
+      check('profile.html', 'pill', describeStatus(ctx), PILL.READY);
+    },
+  },
+  {
+    file: 'post.html',
+    expect(ctx) {
+      const p = focusedPost(ctx);
+      check('post.html', 'pageType', ctx.pageType, 'post');
+      check('post.html', 'focusedPostId', ctx.focusedPostId, 'C9xY2kLpQ7a');
+      check('post.html', 'username', p.username, 'lena.explores');
+      check('post.html', 'caption', p.caption, startsWith('Golden hour on the cliffs of Moher'));
+      check('post.html', 'caption has hashtags', p.caption, endsWith('#cliffsofmoher'));
+      check('post.html', 'comments.length', p.comments.length, 5);
+      check('post.html', 'first comment', p.comments[0], 'marco.b: this light is unreal');
+      check('post.html', 'commentCount', p.commentCount, 214);
+      check('post.html', 'likes', p.likes, 12483);
+      check('post.html', 'mediaType', p.mediaType, 'image');
+      check('post.html', 'mediaUrl (largest srcset)', p.mediaUrl, endsWith('cliffs_1080.jpg'));
+      check('post.html', 'altText', p.altText, startsWith('Photo by lena.explores'));
+      check('post.html', 'postedAt', p.postedAt, '2026-09-10T06:42:00.000Z');
+      check('post.html', 'isPrivate (cached from profile.html)', p.isPrivate, false);
+      check('post.html', 'pill', describeStatus(ctx), PILL.PUBLIC_POST);
+    },
+  },
+  {
+    // Synthetic: the post.html article opened as a modal on top of the profile page.
+    // Exercises "open modal wins" for both pageType and focusedPostId.
+    file: 'post modal over profile (synthetic)',
+    async build() {
+      const [profileText, postText] = await Promise.all([
+        fetch('./fixtures/profile.html', { cache: 'no-store' }).then((r) => r.text()),
+        fetch('./fixtures/post.html', { cache: 'no-store' }).then((r) => r.text()),
+      ]);
+      const doc = new DOMParser().parseFromString(profileText, 'text/html');
+      const postDoc = new DOMParser().parseFromString(postText, 'text/html');
+      const dialog = doc.createElement('div');
+      dialog.setAttribute('role', 'dialog');
+      dialog.appendChild(doc.importNode(postDoc.querySelector('article'), true));
+      doc.body.appendChild(dialog);
+      return { doc, url: 'https://www.instagram.com/p/C9xY2kLpQ7a/' };
+    },
+    expect(ctx) {
+      const p = focusedPost(ctx);
+      check('modal', 'pageType (modal overrides profile URL)', ctx.pageType, 'post');
+      check('modal', 'focusedPostId', ctx.focusedPostId, 'C9xY2kLpQ7a');
+      check('modal', 'caption', p.caption, startsWith('Golden hour on the cliffs of Moher'));
+      check('modal', 'comments.length', p.comments.length, 5);
+      check('modal', 'pill', describeStatus(ctx), PILL.PUBLIC_POST);
+    },
+  },
+  {
+    file: 'private-profile.html',
+    expect(ctx) {
+      const p = focusedPost(ctx);
+      check('private-profile.html', 'pageType', ctx.pageType, 'profile');
+      check('private-profile.html', 'username', p && p.username, 'quiet.club');
+      check('private-profile.html', 'isPrivate', p && p.isPrivate, true);
+      check('private-profile.html', 'pill', describeStatus(ctx), PILL.PRIVATE);
+    },
+  },
+  {
+    file: 'private-post.html',
+    expect(ctx) {
+      const p = focusedPost(ctx);
+      check('private-post.html', 'pageType', ctx.pageType, 'post');
+      check('private-post.html', 'focusedPostId', ctx.focusedPostId, 'DB1QuietZ9k');
+      check('private-post.html', 'username', p.username, 'quiet.club');
+      check('private-post.html', 'isPrivate', p.isPrivate, true);
+      check('private-post.html', 'caption stripped', p.caption, null);
+      check('private-post.html', 'comments stripped', p.comments.length, 0);
+      check('private-post.html', 'altText stripped', p.altText, null);
+      check('private-post.html', 'mediaType stripped', p.mediaType, null);
+      check('private-post.html', 'mediaUrl stripped', p.mediaUrl, null);
+      check('private-post.html', 'pill', describeStatus(ctx), PILL.PRIVATE);
+    },
+  },
+  {
+    file: 'reel.html',
+    expect(ctx) {
+      const p = focusedPost(ctx);
+      check('reel.html', 'pageType', ctx.pageType, 'reel');
+      check('reel.html', 'focusedPostId', ctx.focusedPostId, 'DA7mQ2ZtVbn');
+      check('reel.html', 'username', p.username, 'kai.makes');
+      check('reel.html', 'caption', p.caption, startsWith('3 joinery tricks I wish I knew at 19'));
+      check('reel.html', 'comments.length', p.comments.length, 3);
+      check('reel.html', 'commentCount', p.commentCount, 143);
+      check('reel.html', 'likes', p.likes, 8912);
+      check('reel.html', 'mediaType', p.mediaType, 'video');
+      check('reel.html', 'mediaUrl (poster)', p.mediaUrl, endsWith('reel_joinery_poster_1080.jpg'));
+      check('reel.html', 'postedAt', p.postedAt, '2026-09-08T17:05:00.000Z');
+      check('reel.html', 'isPrivate unknown (row 2)', p.isPrivate, null);
+      check('reel.html', 'pill', describeStatus(ctx), PILL.UNCONFIRMED);
+    },
+  },
+  {
+    file: 'story.html',
+    expect(ctx) {
+      const p = focusedPost(ctx);
+      check('story.html', 'pageType', ctx.pageType, 'story');
+      check('story.html', 'focusedPostId', ctx.focusedPostId, 'story:nomad.bites:0');
+      check('story.html', 'username', p.username, 'nomad.bites');
+      check('story.html', 'caption (no overlay text)', p.caption, null);
+      check('story.html', 'altText (empty alt -> null)', p.altText, null);
+      check('story.html', 'mediaType', p.mediaType, 'image');
+      check('story.html', 'mediaUrl', p.mediaUrl, endsWith('story_ramen_1080.jpg'));
+      check('story.html', 'pill (row 6)', describeStatus(ctx), PILL.STORY_NO_TEXT);
+    },
+  },
+  {
+    file: 'composer.html',
+    expect(ctx) {
+      check('composer.html', 'pageType', ctx.pageType, 'composer');
+      check('composer.html', 'posts', ctx.posts.length, 0);
+      check('composer.html', 'focusedPostId', ctx.focusedPostId, null);
+      check('composer.html', 'draftCaption', ctx.draftCaption, startsWith('morning ferry to the islands'));
+      check('composer.html', 'pill', describeStatus(ctx), PILL.READY);
+    },
+  },
+  {
+    file: 'feed.html',
+    expect(ctx) {
+      check('feed.html', 'pageType', ctx.pageType, 'feed');
+      check('feed.html', 'posts', ctx.posts.length, 3);
+      check('feed.html', 'focusedPostId (no layout -> first)', ctx.focusedPostId, 'C9tHuTsK1mQ');
+      const [a, b, c] = ctx.posts;
+      check('feed.html', 'post1 username', a.username, 'coastal.cassie');
+      check('feed.html', 'post1 caption', a.caption, startsWith('nine degrees and still swimming'));
+      check('feed.html', 'post1 comments', a.comments.length, 2);
+      check('feed.html', 'post1 commentCount', a.commentCount, 61);
+      check('feed.html', 'post1 likes', a.likes, 3204);
+      check('feed.html', 'post1 mediaType', a.mediaType, 'image');
+      check('feed.html', 'post2 id', b.id, 'C9rPaSt4Vv8');
+      check('feed.html', 'post2 mediaType', b.mediaType, 'video');
+      check('feed.html', 'post2 likes (41.2K)', b.likes, 41200);
+      check('feed.html', 'post2 comments (row 5)', b.comments.length, 0);
+      check('feed.html', 'post2 commentCount', b.commentCount, 872);
+      check('feed.html', 'post3 caption miss (row 4)', c.caption, null);
+      check('feed.html', 'post3 likes (none yet)', c.likes, 0);
+      check('feed.html', 'pill (row 2, owner never visited)', describeStatus(ctx), PILL.UNCONFIRMED);
+    },
+  },
+  {
+    file: 'unknown.html',
+    expect(ctx) {
+      check('unknown.html', 'pageType', ctx.pageType, 'unknown');
+      check('unknown.html', 'posts', ctx.posts.length, 0);
+      check('unknown.html', 'focusedPostId', ctx.focusedPostId, null);
+      check('unknown.html', 'pill (row 3)', describeStatus(ctx), PILL.UNKNOWN_PAGE);
+    },
+  },
+];
+
+/* --------------------------------------------------------------------- run */
+function urlFromSource(text, file) {
+  const m = text.match(/<!--\s*url:\s*(\S+)\s*-->/i);
+  return m ? m[1] : `https://www.instagram.com/${file}`;
+}
+
+function cell(row, value, cls) {
+  const td = document.createElement('td');
+  td.textContent = value === undefined ? '' : String(value);
+  if (cls) td.className = cls;
+  row.appendChild(td);
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** Live-document checks: the SPA observer and the no-override code path. */
+async function liveChecks(tbody) {
+  // 1. onNavigate: patched pushState, debounced, unsubscribe stops it.
+  const before = problems.length;
+  const seen = [];
+  let unsub = () => {};
+  try {
+    unsub = onNavigate((u) => seen.push(u));
+    history.pushState({}, '', '?nav=1');
+    await sleep(600);
+    check('onNavigate', 'fired once after pushState', seen.length, 1);
+    check('onNavigate', 'url passed to callback', !!(seen[0] && seen[0].includes('nav=1')), true);
+    unsub();
+    history.pushState({}, '', '?nav=2');
+    await sleep(600);
+    check('onNavigate', 'silent after unsubscribe', seen.length, 1);
+  } catch (e) {
+    problems.push(`onNavigate: threw ${e && e.message}`);
+  } finally {
+    try { unsub(); } catch (e) { /* noop */ }
+    try { history.replaceState({}, '', location.pathname); } catch (e) { /* noop */ }
+  }
+  let row = document.createElement('tr');
+  cell(row, '(live) onNavigate');
+  for (let i = 0; i < 9; i++) cell(row, i === 8 ? `${seen.length} callback(s)` : '-');
+  cell(row, '-');
+  cell(row, problems.length > before ? `FAIL (${problems.length - before})` : 'pass',
+       problems.length > before ? 'fail' : 'pass');
+  tbody.appendChild(row);
+
+  // 2. getPageContext() with no overrides, on this (non-Instagram) page: row 3, no throw.
+  const before2 = problems.length;
+  let live = null;
+  try {
+    live = await getPageContext();
+    check('live document', 'pageType', live.pageType, 'unknown');
+    check('live document', 'posts', live.posts.length, 0);
+    check('live document', 'url is this page', live.url.includes('/src/context/test.html'), true);
+    check('live document', 'pill', describeStatus(live), PILL.UNKNOWN_PAGE);
+  } catch (e) {
+    problems.push(`live document: threw ${e && e.message}`);
+  }
+  row = document.createElement('tr');
+  cell(row, '(live) getPageContext()');
+  cell(row, live ? live.pageType : '-');
+  for (let i = 0; i < 7; i++) cell(row, '-');
+  cell(row, live ? String(live.focusedPostId) : '-');
+  cell(row, '-');
+  cell(row, live ? `${describeStatus(live).level}: ${describeStatus(live).message}` : '-');
+  cell(row, problems.length > before2 ? `FAIL (${problems.length - before2})` : 'pass',
+       problems.length > before2 ? 'fail' : 'pass');
+  tbody.appendChild(row);
+}
+
+async function run() {
+  const tbody = document.querySelector('#results tbody');
+  const details = [];
+
+  for (const c of CASES) {
+    const before = problems.length;
+    let ctx = null;
+    try {
+      let input;
+      if (c.build) {
+        input = await c.build();
+      } else {
+        const res = await fetch(`./fixtures/${c.file}`, { cache: 'no-store' });
+        const text = await res.text();
+        input = { doc: new DOMParser().parseFromString(text, 'text/html'), url: urlFromSource(text, c.file) };
+      }
+      ctx = await getPageContext(input);
+      c.expect(ctx);
+    } catch (e) {
+      problems.push(`${c.file}: threw ${e && e.message}`);
+    }
+
+    const p = ctx ? focusedPost(ctx) : null;
+    const pill = ctx ? describeStatus(ctx) : { level: '-', message: 'no context' };
+    const row = document.createElement('tr');
+    cell(row, c.file);
+    cell(row, ctx ? ctx.pageType : '-');
+    cell(row, p ? p.username : '-');
+    cell(row, p && p.caption ? p.caption.slice(0, 60) : 'null');
+    cell(row, p ? p.comments.length : '-');
+    cell(row, p ? String(p.commentCount) : '-');
+    cell(row, p ? String(p.likes) : '-');
+    cell(row, p ? `${p.mediaType}` : '-');
+    cell(row, ctx ? String(ctx.focusedPostId) : '-');
+    cell(row, p ? String(p.isPrivate) : '-');
+    cell(row, `${pill.level}: ${pill.message}`);
+    const failed = problems.length - before;
+    cell(row, failed ? `FAIL (${failed})` : 'pass', failed ? 'fail' : 'pass');
+    tbody.appendChild(row);
+
+    details.push(`${c.file}\n${JSON.stringify(ctx, null, 2)}`);
+  }
+
+  await liveChecks(tbody);
+
+  const verdict = document.getElementById('verdict');
+  if (problems.length === 0) {
+    verdict.textContent = 'ALL PASS';
+    verdict.className = 'ok';
+  } else {
+    verdict.textContent = `FAIL: ${problems.join(' | ')}`;
+    verdict.className = 'bad';
+  }
+  document.getElementById('detail').textContent = details.join('\n\n');
+}
+
+run().catch((e) => {
+  const verdict = document.getElementById('verdict');
+  verdict.textContent = `FAIL: runner threw ${e && e.message}`;
+  verdict.className = 'bad';
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Grammy onboarding — test</title>
+</head>
+<body>
+<!-- Real markup is fetched from index.html and cloned in here fresh for each
+     scenario, so the test always exercises the exact production DOM (never a
+     hand-duplicated copy that could drift from it). -->
+<div id="mount"></div>
+<pre id="out"></pre>
+<script type="module">
+import { ok, fail, ERR, MSG, STORAGE_KEYS } from '../../shared/types.js';
+
+const out = document.getElementById('out');
+function line(s) {
+  out.textContent += s + '\n';
+  // eslint-disable-next-line no-console
+  console.log(s);
+}
+function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
+const results = [];
+function record(name, passed, detail) {
+  results.push(passed);
+  line(`${passed ? 'PASS' : 'FAIL'}: ${name}${detail !== undefined ? ' — ' + detail : ''}`);
+}
+
+// Prevent the actual test tab from closing when Done/Close calls
+// window.close() — we want to keep running scenarios and dump the page after.
+let closeCalls = 0;
+try {
+  window.close = () => { closeCalls++; };
+} catch (e) { /* ignore if non-configurable */ }
+
+/** A minimal but faithful chrome shim: promise-based storage.local, and a
+ * runtime.sendMessage that records every envelope it saw and answers
+ * GET_MEMORY / SAVE_MEMORY / ASK the way the real bus would. */
+function makeChromeShim(initialStore) {
+  const store = Object.assign({}, initialStore);
+  const sentMessages = [];
+  let askBehavior = ok({ text: 'OK', model: 'test' });
+  return {
+    __store: store,
+    __sentMessages: sentMessages,
+    setAskBehavior(b) { askBehavior = b; },
+    storage: {
+      local: {
+        async get(keys) {
+          if (keys == null) return Object.assign({}, store);
+          const list = Array.isArray(keys) ? keys : [keys];
+          const res = {};
+          for (const k of list) if (k in store) res[k] = store[k];
+          return res;
+        },
+        async set(obj) {
+          Object.assign(store, obj);
+        },
+      },
+    },
+    runtime: {
+      async sendMessage(msg) {
+        sentMessages.push(JSON.parse(JSON.stringify(msg)));
+        const { type, data } = msg || {};
+        if (type === MSG.GET_MEMORY) {
+          return ok(store[STORAGE_KEYS.MEMORY] || null);
+        }
+        if (type === MSG.SAVE_MEMORY) {
+          const prev = store[STORAGE_KEYS.MEMORY] || { profile: {}, pinned: [], history: [] };
+          const merged = {
+            ...prev,
+            ...(data && data.memory),
+            profile: { ...prev.profile, ...((data && data.memory && data.memory.profile) || {}) },
+          };
+          store[STORAGE_KEYS.MEMORY] = merged;
+          return ok(merged);
+        }
+        if (type === MSG.ASK) {
+          return askBehavior;
+        }
+        return fail(ERR.UNKNOWN_TYPE, String(type));
+      },
+    },
+  };
+}
+
+// ---- fetch index.html once, clone its <template> into #mount per scenario
+let pageTemplate = null;
+async function getTemplate() {
+  if (pageTemplate) return pageTemplate;
+  const res = await fetch('./index.html');
+  const html = await res.text();
+  const parsed = new DOMParser().parseFromString(html, 'text/html');
+  pageTemplate = parsed.getElementById('onboardTemplate');
+  if (!pageTemplate) throw new Error('index.html has no #onboardTemplate — cannot clone markup for the test');
+  return pageTemplate;
+}
+
+async function freshMount() {
+  const tpl = await getTemplate();
+  const mount = document.getElementById('mount');
+  mount.innerHTML = '';
+  mount.appendChild(document.importNode(tpl.content, true));
+}
+
+const $ = (id) => document.getElementById(id);
+
+async function run() {
+  const { initOnboarding } = await import('./onboarding.js');
+
+  // ===================================================================
+  // Scenario A — full happy path: Influencer -> mic granted -> key typed,
+  // tested (rejected then working) -> Done.
+  // ===================================================================
+  await freshMount();
+  const chromeA = makeChromeShim({});
+  await initOnboarding({ chrome: chromeA, doc: document });
+
+  record('step 1 visible on load', !$('step1').hidden && $('step2').hidden && $('step3').hidden);
+
+  $('personaInfluencer').click();
+  record('Influencer card selected', $('personaInfluencer').getAttribute('aria-pressed') === 'true');
+  record('Casual card deselected', $('personaCasual').getAttribute('aria-pressed') === 'false');
+
+  $('nextBtn').click();
+  await sleep(50);
+  record('Next advances to step 2', $('step1').hidden && !$('step2').hidden);
+
+  $('micGrantBtn').click();
+  await sleep(1500); // real getUserMedia() with the fake device flags
+  record(
+    'mic grant shows the granted state',
+    $('micStatus').dataset.state === 'granted',
+    $('micStatus').textContent
+  );
+
+  $('nextBtn').click();
+  await sleep(50);
+  record('Next advances to step 3', $('step2').hidden && !$('step3').hidden);
+
+  const typedKey = 'sk-test-1234567890';
+  $('apiKeyInput').value = typedKey;
+  $('apiKeyInput').dispatchEvent(new Event('input', { bubbles: true }));
+
+  chromeA.setAskBehavior(fail(ERR.BAD_KEY, 'invalid'));
+  $('testKeyBtn').click();
+  await sleep(50);
+  record(
+    'rejected key shows the red "check it and try again" message',
+    /rejected.*check it and try again/i.test($('testKeyResult').textContent),
+    $('testKeyResult').textContent
+  );
+  record('rejected key result is styled red (err class)', $('testKeyResult').classList.contains('err'));
+
+  chromeA.setAskBehavior(ok({ text: 'OK', model: 'test' }));
+  $('testKeyBtn').click();
+  await sleep(50);
+  record('working key shows "Key works"', /key works/i.test($('testKeyResult').textContent), $('testKeyResult').textContent);
+  record('working key result is styled ok', $('testKeyResult').classList.contains('ok'));
+
+  $('doneBtn').click();
+  await sleep(700);
+
+  record('apiKey saved to storage', chromeA.__store[STORAGE_KEYS.API_KEY] === typedKey, chromeA.__store[STORAGE_KEYS.API_KEY]);
+  record('onboarded flag set true', chromeA.__store[STORAGE_KEYS.ONBOARDED] === true);
+  const saveMemoryMsg = chromeA.__sentMessages.find((m) => m.type === MSG.SAVE_MEMORY);
+  record(
+    'SAVE_MEMORY carried { memory: { profile: { persona: "influencer" } } }',
+    !!saveMemoryMsg && !!saveMemoryMsg.data && !!saveMemoryMsg.data.memory &&
+      !!saveMemoryMsg.data.memory.profile && saveMemoryMsg.data.memory.profile.persona === 'influencer',
+    JSON.stringify(saveMemoryMsg)
+  );
+  record('close-tab fallback message shown after Done (window did not actually close)', !$('closeFallback').hidden);
+  record('window.close() was actually invoked by Done', closeCalls > 0, String(closeCalls));
+
+  // ===================================================================
+  // Scenario B — mic denied (NotAllowedError) shows the reset instructions,
+  // and Skip still reaches Done.
+  // ===================================================================
+  closeCalls = 0;
+  await freshMount();
+  const chromeB = makeChromeShim({});
+  const realGetUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+  navigator.mediaDevices.getUserMedia = async () => {
+    const e = new Error('Permission denied');
+    e.name = 'NotAllowedError';
+    throw e;
+  };
+  try {
+    await initOnboarding({ chrome: chromeB, doc: document });
+    $('personaCasual').click();
+    $('nextBtn').click();
+    await sleep(50);
+
+    $('micGrantBtn').click();
+    await sleep(100);
+    record(
+      'NotAllowedError shows the denied message with reset instructions',
+      $('micStatus').dataset.state === 'denied' &&
+        /chrome:\/\/settings\/content\/microphone/.test($('micStatus').textContent) &&
+        /block list/.test($('micStatus').textContent),
+      $('micStatus').textContent
+    );
+
+    $('micSkipBtn').click();
+    await sleep(50);
+    record('Skip for now advances to step 3', $('step2').hidden && !$('step3').hidden);
+
+    $('apiKeyInput').value = 'sk-skip-path-key';
+    $('apiKeyInput').dispatchEvent(new Event('input', { bubbles: true }));
+    $('doneBtn').click();
+    await sleep(700);
+    record('Skip path still reaches Done (onboarded true)', chromeB.__store[STORAGE_KEYS.ONBOARDED] === true);
+    record('Skip path still saves the typed key', chromeB.__store[STORAGE_KEYS.API_KEY] === 'sk-skip-path-key');
+  } finally {
+    navigator.mediaDevices.getUserMedia = realGetUserMedia;
+  }
+
+  // ===================================================================
+  // Scenario B2 — NotFoundError message (no mic plugged in).
+  // ===================================================================
+  await freshMount();
+  const chromeB2 = makeChromeShim({});
+  navigator.mediaDevices.getUserMedia = async () => {
+    const e = new Error('no device');
+    e.name = 'NotFoundError';
+    throw e;
+  };
+  try {
+    await initOnboarding({ chrome: chromeB2, doc: document });
+    $('nextBtn').click();
+    await sleep(20);
+    $('micGrantBtn').click();
+    await sleep(100);
+    record(
+      'NotFoundError shows "No microphone found"',
+      $('micStatus').dataset.state === 'denied' && /no microphone found/i.test($('micStatus').textContent),
+      $('micStatus').textContent
+    );
+  } finally {
+    navigator.mediaDevices.getUserMedia = realGetUserMedia;
+  }
+
+  // ===================================================================
+  // Scenario C — re-opening when already onboarded renders the summary view
+  // pre-filled from storage, with persona from GET_MEMORY / the memory object.
+  // ===================================================================
+  await freshMount();
+  const chromeC = makeChromeShim({
+    [STORAGE_KEYS.ONBOARDED]: true,
+    [STORAGE_KEYS.API_KEY]: 'sk-existing-key',
+    [STORAGE_KEYS.MEMORY]: { profile: { persona: 'influencer', brandVoice: '', niche: '' }, pinned: [], history: [] },
+  });
+  await initOnboarding({ chrome: chromeC, doc: document });
+  await sleep(50);
+  record('already-onboarded: summary view shown (step flow hidden)', !$('summaryView').hidden && $('stepViewport').hidden);
+  record('summary shows persona Influencer', /influencer/i.test($('summaryPersona').textContent), $('summaryPersona').textContent);
+  record('summary shows API key present', /saved|yes|present/i.test($('summaryKey').textContent), $('summaryKey').textContent);
+
+  // "Change" on the persona row jumps back into the stepped flow at step 1.
+  document.querySelector('[data-change="1"]').click();
+  await sleep(50);
+  record('Change (persona) leaves the stepped flow on step 1', !$('stepViewport').hidden && !$('step1').hidden);
+  record('Change pre-selects the existing persona (influencer)', $('personaInfluencer').getAttribute('aria-pressed') === 'true');
+
+  // ===================================================================
+  const allPass = results.every(Boolean);
+  line(allPass ? 'ALL PASS' : 'SOME FAILED');
+}
+
+run().catch((e) => {
+  line('FAIL: uncaught error — ' + ((e && e.stack) || e));
+  line('SOME FAILED');
+});
+</script>
+</body>
+</html>

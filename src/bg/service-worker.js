@@ -1,28 +1,31 @@
-// src/bg/service-worker.js — STUB (Phase 1). Routes every bus type and returns fake data.
-// The bg subagent replaces the handlers with real fetches (see shared/types.js §6).
+// src/bg/service-worker.js — the real background router. All model/TTS/STT
+// fetches happen through src/bg/api.js (pure, no chrome.*); this file is the
+// chrome.* glue: storage, tab messaging, the offscreen document, and the
+// chrome.runtime.onMessage router.
+//
+// Top-level chrome.* access is guarded by `typeof chrome !== 'undefined'` so a
+// Node test can install a fake `globalThis.chrome` shim, import this module,
+// and drive the router either through the captured onMessage listener or the
+// exported `handle()` directly.
 import { MSG, ERR, ok, fail, STORAGE_KEYS, OFFSCREEN_URL, defaultMemory } from '../../shared/types.js';
 import { MODELS } from './config.js';
+import { callModel, speech, transcribe } from './api.js';
 
-// Open onboarding on first install.
-chrome.runtime.onInstalled.addListener((details) => {
-  try {
-    if (details.reason === 'install') chrome.runtime.openOptionsPage();
-  } catch (e) {
-    console.warn('[grammy/bg] openOptionsPage', e);
-  }
-});
+/* --------------------------------------------------------------- test seam */
 
-// Toolbar icon → settings.
-try {
-  chrome.action.onClicked.addListener(() => chrome.runtime.openOptionsPage());
-} catch (e) {
-  /* no action API in some contexts */
+// Real fetch by default; tests override via _setDepsForTest({ fetchImpl }).
+let deps = { fetchImpl: (...args) => globalThis.fetch(...args) };
+
+export function _setDepsForTest(overrides) {
+  deps = { ...deps, ...(overrides || {}) };
 }
+
+/* ------------------------------------------------------------------ memory */
 
 async function readMemory() {
   try {
     const got = await chrome.storage.local.get(STORAGE_KEYS.MEMORY);
-    const m = got[STORAGE_KEYS.MEMORY];
+    const m = got && got[STORAGE_KEYS.MEMORY];
     if (!m || typeof m !== 'object') return defaultMemory();
     return { ...defaultMemory(), ...m, profile: { ...defaultMemory().profile, ...(m.profile || {}) } };
   } catch (e) {
@@ -38,7 +41,37 @@ async function writeMemory(partial) {
   return next;
 }
 
+/* --------------------------------------------------------------- API key */
+
+async function getKey() {
+  try {
+    const got = await chrome.storage.local.get(STORAGE_KEYS.API_KEY);
+    const v = got && got[STORAGE_KEYS.API_KEY];
+    return typeof v === 'string' ? v.trim() : '';
+  } catch (e) {
+    return '';
+  }
+}
+
+/* --------------------------------------------------------- status pushes */
+
+function pushStatus(sender, pill) {
+  try {
+    const tabId = sender && sender.tab && sender.tab.id;
+    if (!tabId) return;
+    chrome.tabs.sendMessage(tabId, { type: MSG.STATUS, data: pill }).catch(() => {});
+  } catch (e) {
+    /* no tab to push to (e.g. message came from the offscreen doc or a popup) */
+  }
+}
+
+/* ------------------------------------------------------------- offscreen */
+// Ported from demos/mic-tts-test-insta/background.js: getContexts() guard plus
+// a shared in-flight promise so two near-simultaneous VOICE_START calls only
+// create one offscreen document.
+
 let creatingOffscreen = null;
+
 async function ensureOffscreen() {
   const contexts = await chrome.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'] });
   if (contexts.length) return;
@@ -49,7 +82,9 @@ async function ensureOffscreen() {
       reasons: ['USER_MEDIA'],
       justification: 'Record push-to-talk audio while the user browses Instagram.',
     })
-    .finally(() => { creatingOffscreen = null; });
+    .finally(() => {
+      creatingOffscreen = null;
+    });
   return creatingOffscreen;
 }
 
@@ -59,27 +94,25 @@ async function toOffscreen(type, data) {
   return res || fail(ERR.OFFSCREEN_FAILED, 'No response from offscreen document');
 }
 
-async function handle(msg, sender) {
+/* ------------------------------------------------------------------ router */
+
+export async function handle(msg, sender) {
   const data = (msg && msg.data) || {};
-  switch (msg.type) {
+  switch (msg && msg.type) {
     case MSG.ASK:
     case MSG.STYLE_ADVICE: {
-      const got = await chrome.storage.local.get(STORAGE_KEYS.API_KEY);
-      if (!got[STORAGE_KEYS.API_KEY]) {
-        // Stub still answers so the UI can be exercised without a key.
-        console.log('[grammy/bg] (stub) no API key set; returning fake reply');
-      }
-      const fakeJson = JSON.stringify({
-        reply: "It's a sunrise shot from the Cliffs of Moher on 35mm film, and the comments are all about that light.",
-        highlightTarget: null,
-        memoryUpdate: null,
-      });
-      return ok({ text: data.responseFormat === 'text' ? 'Warm golden-hour light, one accent colour, wide frame.' : fakeJson, model: MODELS.brain });
+      const apiKey = await getKey();
+      const onStatus = (pill) => pushStatus(sender, pill);
+      return callModel({ req: data, apiKey, fetchImpl: deps.fetchImpl, onStatus, models: MODELS });
     }
-    case MSG.SPEAK:
-      return ok({ audioBase64: '', mime: 'audio/mpeg' });
-    case MSG.TRANSCRIBE:
-      return ok({ text: "what's this post about" });
+    case MSG.SPEAK: {
+      const apiKey = await getKey();
+      return speech({ text: data.text, apiKey, fetchImpl: deps.fetchImpl });
+    }
+    case MSG.TRANSCRIBE: {
+      const apiKey = await getKey();
+      return transcribe({ audioBase64: data.audioBase64, mime: data.mime, apiKey, fetchImpl: deps.fetchImpl });
+    }
     case MSG.GET_MEMORY:
       return ok(await readMemory());
     case MSG.SAVE_MEMORY:
@@ -89,17 +122,56 @@ async function handle(msg, sender) {
     case MSG.VOICE_STOP:
       return toOffscreen(MSG.VOICE_STOP, data);
     case MSG.OPEN_ONBOARDING:
-      await chrome.runtime.openOptionsPage();
+      try {
+        chrome.runtime.openOptionsPage();
+      } catch (e) {
+        /* ignore */
+      }
       return ok(null);
     default:
       return fail(ERR.UNKNOWN_TYPE, `Unknown message type: ${msg && msg.type}`);
   }
 }
 
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (!msg || msg.target === 'offscreen') return false; // for the offscreen doc, not us
-  handle(msg, sender)
-    .then((res) => sendResponse(res))
-    .catch((e) => sendResponse(fail(ERR.INTERNAL, e && e.message)));
-  return true; // async
-});
+/* ------------------------------------------------------------- registration */
+// Guarded so this module can be imported in Node once a fake `chrome` is
+// installed on globalThis; every sub-registration is its own try/catch so one
+// missing API (e.g. no chrome.action in some contexts) never blocks the rest.
+
+if (typeof chrome !== 'undefined') {
+  try {
+    chrome.runtime.onInstalled.addListener((details) => {
+      try {
+        if (details && details.reason === 'install') chrome.runtime.openOptionsPage();
+      } catch (e) {
+        console.warn('[grammy/bg] openOptionsPage', e);
+      }
+    });
+  } catch (e) {
+    /* ignore */
+  }
+
+  try {
+    chrome.action.onClicked.addListener(() => {
+      try {
+        chrome.runtime.openOptionsPage();
+      } catch (e) {
+        /* ignore */
+      }
+    });
+  } catch (e) {
+    /* no action API in some contexts */
+  }
+
+  try {
+    chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+      if (!msg || msg.target === 'offscreen') return false; // for the offscreen doc, not us
+      handle(msg, sender)
+        .then((res) => sendResponse(res))
+        .catch((e) => sendResponse(fail(ERR.INTERNAL, (e && e.message) || 'internal error')));
+      return true; // async response
+    });
+  } catch (e) {
+    /* ignore */
+  }
+}

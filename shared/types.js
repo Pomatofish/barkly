@@ -69,6 +69,7 @@ export const STORAGE_KEYS = {
   MEMORY: 'memory',              // Memory — owned by brain; onboarding writes memory.profile via SAVE_MEMORY
   ONBOARDED: 'onboarded',        // boolean — set true when the onboarding flow completes
   PRIVACY_CACHE: 'privacyCache', // { [username]: { isPrivate: boolean, seenAt: number } } — owned by context
+  MASCOT_POS: 'grammy_mascot_pos', // { x, y } — owned by overlay (accepted from reports/overlay-1.md)
 };
 
 export const LIMITS = {

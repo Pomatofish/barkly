@@ -21,12 +21,12 @@
   },
   "content_scripts": [
     {
-      "matches": ["*://*.instagram.com/*"],
+      "matches": ["*://*.instagram.com/*", "http://localhost/*"],
       "js": ["src/context/early.js"],
       "run_at": "document_start"
     },
     {
-      "matches": ["*://*.instagram.com/*"],
+      "matches": ["*://*.instagram.com/*", "http://localhost/*"],
       "js": ["src/content.js"],
       "run_at": "document_idle"
     }
@@ -34,7 +34,7 @@
   "web_accessible_resources": [
     {
       "resources": ["src/*", "src/*/*", "src/*/*/*", "shared/*"],
-      "matches": ["*://*.instagram.com/*"]
+      "matches": ["*://*.instagram.com/*", "http://localhost/*"]
     }
   ]
 }
