@@ -153,11 +153,28 @@ async function run() {
   );
   record('rejected key result is styled red (err class)', $('testKeyResult').classList.contains('err'));
 
+  chromeA.setAskBehavior(fail(ERR.TIMEOUT, 'Assistant unavailable'));
+  $('testKeyBtn').click();
+  await sleep(50);
+  record(
+    'non-key failure shows the friendlier "Key saved, but..." message (not a rejection)',
+    /^key saved, but the test call failed: assistant unavailable$/i.test($('testKeyResult').textContent),
+    $('testKeyResult').textContent
+  );
+  record('non-key failure result is still styled red (err class)', $('testKeyResult').classList.contains('err'));
+
   chromeA.setAskBehavior(ok({ text: 'OK', model: 'test' }));
   $('testKeyBtn').click();
   await sleep(50);
   record('working key shows "Key works"', /key works/i.test($('testKeyResult').textContent), $('testKeyResult').textContent);
   record('working key result is styled ok', $('testKeyResult').classList.contains('ok'));
+
+  const askMessages = chromeA.__sentMessages.filter((m) => m.type === MSG.ASK);
+  record(
+    'every Test-key ASK used maxOutputTokens: 16 (the API minimum — 5 was rejected live)',
+    askMessages.length > 0 && askMessages.every((m) => m.data && m.data.maxOutputTokens === 16),
+    JSON.stringify(askMessages.map((m) => m.data && m.data.maxOutputTokens))
+  );
 
   $('doneBtn').click();
   await sleep(700);

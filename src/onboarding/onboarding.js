@@ -283,7 +283,7 @@ async function handleTestKey(els, chrome) {
 
   const res = await send(chrome, MSG.ASK, {
     messages: [{ role: 'user', content: 'Reply with the single word OK.' }],
-    maxOutputTokens: 5,
+    maxOutputTokens: 16, // API minimum — 5 was rejected live: "integer below minimum value ... >= 16"
     responseFormat: 'text',
   });
 
@@ -295,7 +295,10 @@ async function handleTestKey(els, chrome) {
   if (code === ERR.NO_KEY || code === ERR.BAD_KEY) {
     setTestKeyResult(els, 'err', 'That key was rejected — check it and try again.');
   } else {
-    setTestKeyResult(els, 'err', (res && res.error && res.error.message) || 'Could not reach the assistant.');
+    // Not a key problem (timeout/network/bad response/etc.) — the key itself
+    // was already saved above, so say so rather than implying it was lost.
+    const message = (res && res.error && res.error.message) || 'could not reach the assistant';
+    setTestKeyResult(els, 'err', 'Key saved, but the test call failed: ' + message);
   }
 }
 
