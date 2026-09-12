@@ -213,7 +213,8 @@ const clickIn = (cdp, id) => evalIn(cdp, `(function(){var e=${SH}(${JSON.stringi
 
 // Records every pill text change (with ms since install) into window.__pillLog.
 async function installPillLog(cdp) {
-  return evalIn(cdp, `(function(){var p=${SH}('pill');if(!p)return false;window.__pillLog=[[0,p.textContent]];var t0=Date.now();new MutationObserver(function(){window.__pillLog.push([Date.now()-t0,p.textContent])}).observe(p,{childList:true,characterData:true,subtree:true});return true})()`);
+  // Also records the mascot's class flips ("mascot:listening" is set by beginPTT BEFORE the bus call).
+  return evalIn(cdp, `(function(){var p=${SH}('pill');var m=${SH}('mascot');if(!p)return false;(window.__pillObs||[]).forEach(function(o){o.disconnect()});window.__pillObs=[];window.__pillLog=[[0,p.textContent]];var t0=Date.now();var o1=new MutationObserver(function(){window.__pillLog.push([Date.now()-t0,p.textContent])});o1.observe(p,{childList:true,characterData:true,subtree:true});window.__pillObs.push(o1);if(m){var o2=new MutationObserver(function(){window.__pillLog.push([Date.now()-t0,'mascot:'+m.className])});o2.observe(m,{attributes:true,attributeFilter:['class']});window.__pillObs.push(o2)}return true})()`);
 }
 const pillLog = (cdp) => evalIn(cdp, `JSON.stringify(window.__pillLog||[])`);
 
@@ -341,8 +342,34 @@ async function main() {
       check('no key → pill "Add your API key in settings" (pushed by bg via STATUS)', nokeyPill, `got "${await pillText(cdp)}"`);
       check('pill is red', /red/.test((await pillClass(cdp)) || ''), await pillClass(cdp));
     } else {
-      const replied = await waitFor(cdp, `(function(){var l=${SH}('log');return !!l&&l.querySelectorAll('[class*="assistant"],[data-role="assistant"]').length>0&&!/Add your API key|unavailable right now/i.test(l.textContent)})()`, { timeout: 25000 });
-      check('with key → a real assistant reply appears in the chat log', replied, (await logText(cdp)).slice(0, 200));
+      // Golden path with a real key: influencer reply with a number → remember → reload → attach → style advice
+      const lastAssistant = `(function(){var l=${SH}('log');var a=l?l.querySelectorAll('.msg.assistant'):[];return a.length?a[a.length-1].textContent:''})()`;
+      const replied = await waitFor(cdp, `(function(){var t=${lastAssistant};return !!t&&!/Add your API key|unavailable right now/i.test(t)})()`, { timeout: 30000 });
+      let reply = await evalIn(cdp, lastAssistant);
+      check('with key → a real assistant reply appears in the chat log', replied, reply.slice(0, 160));
+      check('influencer reply cites at least one number', /\d/.test(reply), reply.slice(0, 160));
+      check('pill returns to green after the reply', await waitPill(cdp, PILL.PUBLIC_POST, 6000), `got "${await pillText(cdp)}"`);
+
+      await evalIn(cdp, `(function(){var i=${SH}('textInput');i.value="remember this post's style";return true})()`);
+      await clickIn(cdp, 'sendBtn');
+      const pinned = await waitFor(cdp, `(function(){var l=${SH}('rememberedList');return !!l&&l.querySelectorAll('.pin-row').length>0})()`, { timeout: 30000 });
+      check('"remember this post\'s style" → a pin appears in the Remembered panel', pinned, (await evalIn(cdp, lastAssistant)).slice(0, 120));
+
+      await navigate(cdp, URLS.post);
+      await waitPill(cdp, PILL.PUBLIC_POST);
+      await pressMascot(cdp, 60);
+      const persisted = await waitFor(cdp, `(function(){var l=${SH}('rememberedList');return !!l&&l.querySelectorAll('.pin-row').length>0})()`, { timeout: 8000 });
+      check('after a page reload the pin is still in the Remembered panel', persisted);
+
+      await evalIn(cdp, `(async function(){var c=document.createElement('canvas');c.width=1600;c.height=1200;var g=c.getContext('2d');g.fillStyle='#f4c542';g.fillRect(0,0,1600,1200);g.fillStyle='#2a6f97';g.fillRect(200,300,900,600);var blob=await new Promise(function(r){c.toBlob(r,'image/png')});var f=new File([blob],'mine.png',{type:'image/png'});var dt=new DataTransfer();dt.items.add(f);var inp=${SH}('fileInput');inp.files=dt.files;inp.dispatchEvent(new Event('change',{bubbles:true}));return true})()`);
+      const previewed = await waitFor(cdp, `(function(){var p=${SH}('attachPreview');return !!p&&!p.hidden})()`, { timeout: 8000 });
+      check('attaching an image shows its preview thumbnail', previewed);
+      const clickedChip = await evalIn(cdp, `(function(){var c=${SH}('chips');var b=c?Array.from(c.querySelectorAll('button')).find(function(x){return /match this style/i.test(x.textContent)}):null;if(!b)return false;b.click();return true})()`);
+      check('"Match this style" chip is present and clicked', clickedChip);
+      const advised = await waitFor(cdp, `(function(){var t=${lastAssistant};return !!t&&t.length>40&&!/Add your API key|unavailable right now|Open a post or attach/i.test(t)})()`, { timeout: 45000 });
+      reply = await evalIn(cdp, lastAssistant);
+      check('style advice comes back as text', advised, reply.slice(0, 160));
+      check('style advice contains no image element (text only)', await evalIn(cdp, `(function(){var l=${SH}('log');return !!l&&l.querySelectorAll('img').length===0})()`));
     }
 
     // 8. private profile → red; the post owned by that account → red (privacy cache)
@@ -369,7 +396,9 @@ async function main() {
       check('mic denied → PTT button hidden (row 7)', hidden);
     } else {
       // Poll the trace (not the live pill) so a state that is set and then restored is still seen.
-      const outcome = await waitFor(cdp, `(function(){var L=window.__pillLog||[];var t=L.map(function(x){return x[1]});var l=${SH}('log');if(t.indexOf(${JSON.stringify(PILL.DIDNT_CATCH)})>=0)return 'didnt_catch';if(t.indexOf(${JSON.stringify(PILL.NO_KEY)})>=0||(l&&/Add your API key/.test(l.textContent)))return 'no_key';return null})()`, { timeout: 15000 });
+      // With a real key the fake device's tone may transcribe to something; a new user turn counts too.
+      const usersBefore = await evalIn(cdp, `(function(){var l=${SH}('log');return l?l.querySelectorAll('.msg.user').length:0})()`);
+      const outcome = await waitFor(cdp, `(function(){var L=window.__pillLog||[];var t=L.map(function(x){return x[1]});var l=${SH}('log');if(t.indexOf(${JSON.stringify(PILL.DIDNT_CATCH)})>=0)return 'didnt_catch';if(t.indexOf(${JSON.stringify(PILL.NO_KEY)})>=0||(l&&/Add your API key/.test(l.textContent)))return 'no_key';if(l&&l.querySelectorAll('.msg.user').length>${usersBefore})return 'asked';return null})()`, { timeout: 20000 });
       const trace = await pillLog(cdp);
       check('long-press → pill went through "Listening…"', /Listening/.test(trace), `trace=${trace}`);
       check('long-press → recorded, transcribed, and ended in a defined state (row 8 or row 13)', !!outcome, `outcome=${outcome} final="${await pillText(cdp)}"`);
@@ -386,10 +415,18 @@ async function main() {
         await installPillLog(cdp);
         await pressMascot(cdp, 700, 'press #2b (menu closed first)');
       }
-      await waitFor(cdp, `(function(){var L=window.__pillLog||[];return L.some(function(x){return x[1]===${JSON.stringify(PILL.DIDNT_CATCH)}})})()`, { timeout: 15000 });
+      await waitFor(cdp, `(function(){var L=window.__pillLog||[];return L.some(function(x){return x[1]===${JSON.stringify(PILL.DIDNT_CATCH)}||x[1]===${JSON.stringify(PILL.PUBLIC_POST)}})})()`, { timeout: 20000 });
       const trace2 = JSON.parse(await pillLog(cdp));
       const secondListen = (trace2.find((x) => x[1] === PILL.LISTENING) || [null])[0];
-      check('second long-press → "Listening…" within 1.5 s (warm path)', secondListen !== null && secondListen <= 1500, `first=${firstListen} ms, second=${secondListen} ms`);
+      check('second long-press → "Listening…" within 1.5 s (warm path)', secondListen !== null && secondListen <= 1500, `first=${firstListen} ms, second=${secondListen} ms trace=${JSON.stringify(trace2)}`);
+      // third press, for consistency
+      await sleep(800);
+      await installPillLog(cdp);
+      await pressMascot(cdp, 700, 'press #3');
+      await waitFor(cdp, `(function(){var L=window.__pillLog||[];return L.some(function(x){return x[1]===${JSON.stringify(PILL.DIDNT_CATCH)}})})()`, { timeout: 15000 });
+      const trace3 = JSON.parse(await pillLog(cdp));
+      const thirdListen = (trace3.find((x) => x[1] === PILL.LISTENING) || [null])[0];
+      console.log(`  · press #3: Listening at ${thirdListen} ms trace=${JSON.stringify(trace3)}`);
     }
   } catch (e) {
     check('harness ran to completion', false, e && e.message);
