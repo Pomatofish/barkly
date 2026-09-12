@@ -335,6 +335,12 @@ async function main() {
     await pressMascot(cdp, 60);
     const opened = await waitFor(cdp, `(function(){var p=${SH}('panel');return !!p&&p.classList.contains('open')})()`, { timeout: 4000 });
     check('tap on mascot opens the chat menu', opened);
+    // gear → settings (onboarding) tab opens
+    await clickIn(cdp, 'gearBtn');
+    let settingsOpened = false;
+    for (let i = 0; i < 12 && !settingsOpened; i++) { await sleep(250); const ts = await getJSON(`http://localhost:${DEV_PORT}/json`); settingsOpened = ts.some((t) => t.type === 'page' && /src\/onboarding\/index\.html/.test(t.url)); }
+    check('gear button opens the settings (onboarding) tab', settingsOpened);
+    if (settingsOpened) { const ts = await getJSON(`http://localhost:${DEV_PORT}/json`); for (const t of ts) if (t.type === 'page' && /onboarding/.test(t.url)) { try { await getJSON(`http://localhost:${DEV_PORT}/json/close/${t.id}`); } catch { /* ignore */ } } await cdp.send('Page.bringToFront'); }
 
     // 6. persona toggle re-renders chips
     await clickIn(cdp, 'personaInfluencer');

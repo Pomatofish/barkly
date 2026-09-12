@@ -146,7 +146,7 @@ function wireEvents() {
 
   bubble.addEventListener('click', () => { hideBubble(true); setMenuOpen(true); });
   closeBtn.addEventListener('click', () => setMenuOpen(false));
-  gearBtn.addEventListener('click', () => { try { deps.request(MSG.OPEN_ONBOARDING); } catch (e) { console.warn(e); } });
+  gearBtn.addEventListener('click', openSettings);
 
   attachMascotGestures(mascot, {
     dragThreshold: 6,
@@ -188,6 +188,16 @@ function wireEvents() {
   forgetBtn.addEventListener('click', onForgetEverything);
 
   void dock; // referenced via applyDockPos()
+}
+
+/** Gear: ask bg to open the options page; if the bus is unavailable open the page directly. */
+async function openSettings() {
+  try {
+    const res = await deps.request(MSG.OPEN_ONBOARDING);
+    if (res && res.ok) return;
+    console.warn('[grammy/overlay] OPEN_ONBOARDING failed', res && res.error);
+  } catch (e) { console.warn('[grammy/overlay] OPEN_ONBOARDING threw', e); }
+  try { window.open(chrome.runtime.getURL('src/onboarding/index.html'), '_blank'); } catch (e) { console.warn('[grammy/overlay] window.open fallback failed', e); }
 }
 
 function spaceBlocked() {

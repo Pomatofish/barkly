@@ -7,7 +7,7 @@
 // Node test can install a fake `globalThis.chrome` shim, import this module,
 // and drive the router either through the captured onMessage listener or the
 // exported `handle()` directly.
-import { MSG, ERR, ok, fail, STORAGE_KEYS, OFFSCREEN_URL, defaultMemory } from '../../shared/types.js';
+import { MSG, ERR, ok, fail, STORAGE_KEYS, OFFSCREEN_URL, ONBOARDING_URL, defaultMemory } from '../../shared/types.js';
 import { MODELS } from './config.js';
 import { callModel, speech, transcribe } from './api.js';
 
@@ -123,11 +123,11 @@ export async function handle(msg, sender) {
       return toOffscreen(MSG.VOICE_STOP, data);
     case MSG.OPEN_ONBOARDING:
       try {
-        chrome.runtime.openOptionsPage();
+        await chrome.runtime.openOptionsPage();
+        return ok(null);
       } catch (e) {
-        /* ignore */
+        try { await chrome.tabs.create({ url: chrome.runtime.getURL(ONBOARDING_URL) }); return ok(null); } catch (e2) { return fail(ERR.INTERNAL, (e2 && e2.message) || 'could not open settings'); }
       }
-      return ok(null);
     default:
       return fail(ERR.UNKNOWN_TYPE, `Unknown message type: ${msg && msg.type}`);
   }
