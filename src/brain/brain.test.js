@@ -302,7 +302,7 @@ test('row 5 + row 6: no comments and a textless story are flagged in the prompt'
     pageContext: storyNoTextContext(), memory: null, persona: 'casual', inputMode: 'text',
   });
   const text = fake.lastRequestText();
-  assert.ok(text.includes('based on the caption only'), 'row 5 instruction present');
+  assert.ok(text.includes('comments: none loaded'), 'row 5 instruction present');
   assert.ok(text.includes('caption: null'), 'row 4/6: the missing caption is stated, not invented');
 });
 

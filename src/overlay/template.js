@@ -6,7 +6,7 @@ export function buildHTML() {
 <div class="wrap">
   <div class="panel" id="panel" role="dialog" aria-label="Grammy">
     <div class="panel-head">
-      <span class="head-emoji">🐶</span><b>Grammy</b>
+      <span class="head-emoji">🐶</span><b>Barkly</b>
       <span class="pill" id="pill">Ready</span>
       <button class="icon-btn" id="gearBtn" type="button" aria-label="Settings" title="Settings">⚙</button>
       <button class="icon-btn" id="closeBtn" type="button" aria-label="Close">×</button>
@@ -39,7 +39,7 @@ export function buildHTML() {
 
     <div class="compose-row">
       <button class="attach-btn" id="attachBtn" type="button" aria-label="Attach my image" title="Attach my image"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
-      <input class="text-input" id="textInput" type="text" placeholder="Ask Grammy…" autocomplete="off" spellcheck="false" />
+      <input class="text-input" id="textInput" type="text" placeholder="Ask Barkly…" autocomplete="off" spellcheck="false" />
       <button class="ptt-btn" id="pttBtn" type="button" aria-label="Push to talk" title="Hold to talk">🎤</button>
       <button class="send-btn" id="sendBtn" type="button" aria-label="Send">➤</button>
       <input type="file" id="fileInput" accept="image/*" hidden />

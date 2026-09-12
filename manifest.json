@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Grammy — Instagram AI assistant",
+  "name": "Barkly — Instagram AI assistant",
   "version": "0.1.0",
   "description": "A voice-first AI assistant that lives inside Instagram: reads the post you are on, answers by voice or text, remembers what you care about.",
   "icons": {
@@ -17,7 +17,7 @@
   },
   "options_page": "src/onboarding/index.html",
   "action": {
-    "default_title": "Grammy — open settings"
+    "default_title": "Barkly — open settings"
   },
   "content_scripts": [
     {

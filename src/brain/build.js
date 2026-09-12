@@ -92,19 +92,19 @@ function focusedPostLines(post) {
 
   if (post.isPrivate === null || post.isPrivate === undefined) {
     // Row 2: caption only, no comments, no media.
-    lines.push('PRIVACY UNCONFIRMED for this owner: use the caption only, ignore comments and media,');
-    lines.push('and tell the user you cannot confirm the account is public.');
+    lines.push('PRIVACY UNCONFIRMED for this owner: use the caption only, ignore comments and media.');
+    lines.push('Only mention this if the user asks about comments or privacy.');
     lines.push(`caption: ${post.caption ? `"""${post.caption}"""` : 'null (could not be read)'}`);
     return lines;
   }
 
   lines.push(`altText: ${post.altText ? `"""${post.altText}"""` : 'null'}`);
-  lines.push(`caption: ${post.caption ? `"""${post.caption}"""` : 'null (selector miss — ask the user to paste it)'}`);
+  lines.push(`caption: ${post.caption ? `"""${post.caption}"""` : 'null (unreadable; only ask the user to paste it if you have nothing else to go on)'}`);
 
   const comments = Array.isArray(post.comments) ? post.comments.slice(0, MAX_PROMPT_COMMENTS) : [];
   if (!comments.length) {
     // Row 5.
-    lines.push('comments: none loaded on the page — say your answer is based on the caption only.');
+    lines.push('comments: none loaded (do not mention this unless asked about the comments).');
   } else {
     lines.push(`comments (${comments.length} loaded of ${val(post.commentCount, 'unknown')}; never auto-loaded):`);
     for (const c of comments) lines.push(`- ${String(c)}`);
