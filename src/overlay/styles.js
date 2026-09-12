@@ -25,7 +25,7 @@ input { font: inherit; color: inherit; }
   width: 56px; height: 56px; touch-action: none;
 }
 .dock.dragging .mascot { cursor: grabbing; transform: scale(1.04); }
-.mascot {
+.mascot { position: relative;
   width: 56px; height: 56px; border-radius: 50%; border: 0; cursor: pointer;
   display: grid; place-items: center; font-size: 30px; line-height: 1;
   background: #fff; box-shadow: 0 6px 20px rgba(0,0,0,.18), 0 0 0 2px #fff;
