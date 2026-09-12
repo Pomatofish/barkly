@@ -78,9 +78,10 @@ export const LIMITS = {
   PROMPT_PINNED: 8,        // top 8 pinned by score go into the prompt
   PROMPT_HISTORY: 10,      // last 10 history turns go into the prompt
   PROMPT_OTHER_POSTS: 5,   // up to 5 non-focused posts as one-line summaries
-  VOICE_MAX_TOKENS: 150,
-  TEXT_MAX_TOKENS: 400,
+  VOICE_MAX_TOKENS: 450,   // output budget incl. JSON wrapper and any reasoning tokens; the prompt keeps the reply short
+  TEXT_MAX_TOKENS: 900,
   VOICE_MAX_SENTENCES: 2,
+  VOICE_MAX_WORDS: 45,
   TEXT_MAX_WORDS: 120,
   PIN_CONTENT_MAX_WORDS: 60,
   TIMEOUT_MS: 12000,       // row 9: AbortController timeout per attempt

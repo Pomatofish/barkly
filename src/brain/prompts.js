@@ -72,12 +72,14 @@ No vague advice such as "post more often".`;
 function lengthRule(inputMode) {
   if (inputMode === 'voice') {
     return `LENGTH — the user asked by VOICE and your reply will be read aloud.
-"reply" must be at most ${LIMITS.VOICE_MAX_SENTENCES} sentences of spoken language: no lists, no
-numbered points, no markdown, no emoji, no hashtags, no URLs. If the persona asks for numbered
-recommendations, fold the single most useful one into your last sentence as plain speech.`;
+"reply" must be at most ${LIMITS.VOICE_MAX_SENTENCES} SHORT sentences (about ${LIMITS.VOICE_MAX_WORDS} words
+total, never more) of spoken language: no lists, no numbered points, no markdown, no emoji, no
+hashtags, no URLs. Answer the question directly in the first sentence. If the persona asks for
+numbered recommendations, fold the single most useful one into your last sentence as plain speech.
+Finish the JSON — a cut-off reply is worse than a short one.`;
   }
-  return `LENGTH — the user typed. "reply" must be at most ${LIMITS.TEXT_MAX_WORDS} words. Plain
-text with short lines; no markdown headings, no code fences.`;
+  return `LENGTH — the user typed. "reply" must be at most ${LIMITS.TEXT_MAX_WORDS} words — shorter is better;
+lead with the answer. Plain text with short lines; no markdown headings, no code fences.`;
 }
 
 function profileRule(profile) {

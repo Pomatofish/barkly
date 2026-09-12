@@ -243,7 +243,7 @@ test('a voice reply is cut to at most 2 sentences and the token budget is the vo
   assert.ok(parse.splitSentences(r.reply).length <= LIMITS.VOICE_MAX_SENTENCES, `too many sentences: ${r.reply}`);
   assert.equal(r.reply, 'This is sentence one. This is sentence two.');
   assert.equal(fake.lastRequest.maxOutputTokens, LIMITS.VOICE_MAX_TOKENS);
-  assert.ok(/at most 2 sentences/.test(fake.systemPromptOf()));
+  assert.ok(/at most 2 SHORT sentences/.test(fake.systemPromptOf()));
 });
 
 test('a long text reply is cut to 120 words at a word boundary', async () => {
