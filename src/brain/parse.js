@@ -113,6 +113,14 @@ export function parseModelReply(text) {
   }
 
   if (!obj || typeof obj.reply !== 'string' || !obj.reply.trim()) {
+    // Row 10, truncated-JSON case: salvage the reply string from a partial {"reply":"... object
+    // so the user never sees the raw JSON prefix.
+    const m = /"reply"\s*:\s*"((?:[^"\\]|\\.)*)/.exec(stripped);
+    if (m && m[1].trim()) {
+      let text = m[1];
+      try { text = JSON.parse('"' + text.replace(/\\$/, '') + '"'); } catch (e) { text = text.replace(/\\n/g, ' ').replace(/\\"/g, '"'); }
+      return { reply: text.trim(), highlightTarget: null, memoryUpdate: null, parsed: false };
+    }
     return { reply: raw, highlightTarget: null, memoryUpdate: null, parsed: false };
   }
   const target = HIGHLIGHT_TARGETS.indexOf(obj.highlightTarget) >= 0 ? obj.highlightTarget : null;
