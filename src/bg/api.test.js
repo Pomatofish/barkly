@@ -129,7 +129,8 @@ test('callModel: happy path builds a correct request and returns ok', async () =
   assert.equal(body.model, MODELS.brain);
   assert.equal(body.max_output_tokens, 150);
   assert.equal(body.reasoning.effort, 'low');
-  assert.deepEqual(body.text, { format: { type: 'json_object' } });
+  assert.equal(body.text, undefined); // strict JSON mode is dropped when the search tool is attached
+  assert.equal(body.tools[0].type, 'web_search_preview');
   assert.equal(statuses.length, 0); // no retries, no status pushes needed
 });
 
