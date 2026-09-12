@@ -850,18 +850,41 @@ function hlFind(target) {
   return best;
 }
 
-function hlTick() {
-  const ring = $('hlRing');
-  if (!ring || !hlEl) return;
-  if (!hlVisible(hlEl)) { ring.classList.remove('show'); hlRaf = requestAnimationFrame(hlTick); return; }
+// Damped springs (ported from demos/grammy_overlay_Test): ring follows the target, the cursor glides
+// in on a curve (different stiffness per axis) and "taps" once it settles.
+const hlS = { x: 0, y: 0, w: 0, h: 0, vx: 0, vy: 0, vw: 0, vh: 0, cx: 0, cy: 0, vcx: 0, vcy: 0, last: 0, init: false };
+function spring(o, k, target, stiff, damp, dt) { const v = 'v' + k; o[v] += (stiff * (target - o[k]) - damp * o[v]) * dt; o[k] += o[v] * dt; }
+
+function hlTick(now) {
+  const ring = $('hlRing'); const cur = $('hlCursor');
+  if (!ring || !cur || !hlEl) return;
+  if (!hlVisible(hlEl)) { ring.classList.remove('show'); cur.classList.remove('show'); hlRaf = requestAnimationFrame(hlTick); return; }
+  const t = now || performance.now();
+  const dt = Math.min((t - (hlS.last || t)) / 1000, 1 / 30); hlS.last = t;
   const r = hlEl.getBoundingClientRect();
-  const pad = 8;
-  ring.style.left = (r.left - pad) + 'px';
-  ring.style.top = (r.top - pad) + 'px';
-  ring.style.width = (r.width + pad * 2) + 'px';
-  ring.style.height = (r.height + pad * 2) + 'px';
-  ring.style.borderRadius = (Math.max(r.width, r.height) / Math.min(r.width, r.height) < 1.5 ? 999 : 14) + 'px';
+  const pad = Math.max(6, Math.min(10, Math.min(r.width, r.height) * 0.25));
+  const T = { x: r.left - pad, y: r.top - pad, w: r.width + pad * 2, h: r.height + pad * 2 };
+  if (!hlS.init) {
+    Object.assign(hlS, { x: T.x - 40, y: T.y - 40, w: T.w + 80, h: T.h + 80, vx: 0, vy: 0, vw: 0, vh: 0, init: true });
+    const d = $('dock')?.getBoundingClientRect(); hlS.cx = d ? d.left + 10 : innerWidth - 60; hlS.cy = d ? d.top + 10 : innerHeight - 60; hlS.vcx = 0; hlS.vcy = 0;
+  }
+  spring(hlS, 'x', T.x, 190, 21, dt); spring(hlS, 'y', T.y, 190, 21, dt);
+  spring(hlS, 'w', T.w, 160, 19, dt); spring(hlS, 'h', T.h, 160, 19, dt);
+  const w = Math.max(hlS.w, 8), h = Math.max(hlS.h, 8);
+  const circle = Math.max(w, h) / Math.min(w, h) < 1.45;
+  ring.style.transform = 'translate3d(' + hlS.x + 'px, ' + hlS.y + 'px, 0)';
+  ring.style.width = w + 'px'; ring.style.height = h + 'px';
+  ring.style.borderRadius = (circle ? Math.min(w, h) / 2 : 14) + 'px';
+  ring.style.setProperty('--d', Math.hypot(w, h) * 1.15 + 'px');
   ring.classList.add('show');
+  // cursor tip aims just inside the control
+  const tipX = T.x + Math.min(T.w * 0.62, T.h * 0.8), tipY = T.y + T.h * 0.64;
+  spring(hlS, 'cx', tipX, 75, 15, dt); spring(hlS, 'cy', tipY, 48, 12.5, dt);
+  const tilt = Math.max(-14, Math.min(14, hlS.vcx * 0.025));
+  cur.style.transform = 'translate3d(' + (hlS.cx - 3) + 'px, ' + (hlS.cy - 2) + 'px, 0) rotate(' + tilt + 'deg)';
+  cur.classList.add('show');
+  const dist = Math.hypot(tipX - hlS.cx, tipY - hlS.cy), speed = Math.hypot(hlS.vcx, hlS.vcy);
+  if (dist < 3 && speed < 25) cur.classList.add('tap'); else if (dist > 10) cur.classList.remove('tap');
   hlRaf = requestAnimationFrame(hlTick);
 }
 
@@ -871,7 +894,7 @@ export function highlight(target) {
     if (!target || !HL_LABELS[target]) return;
     const el = hlFind(target);
     if (!el) return;
-    hlEl = el;
+    hlEl = el; hlS.init = false; hlS.last = 0;
     try { const r = el.getBoundingClientRect(); if (r.top < 80 || r.bottom > innerHeight - 80) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) { /* ignore */ }
     hlRaf = requestAnimationFrame(hlTick);
     hlTimer = setTimeout(clearHighlight, 12000);
@@ -888,6 +911,7 @@ export function clearHighlight() {
     clearTimeout(hlTimer); hlTimer = 0;
     hlEl = null;
     $('hlRing')?.classList.remove('show');
+    $('hlCursor')?.classList.remove('show', 'tap');
   } catch (e) { /* ignore */ }
 }
 

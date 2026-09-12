@@ -48,7 +48,8 @@ export function buildHTML() {
 
   <div class="dock" id="dock">
     <div class="bubble" id="bubble"></div>
-    <div class="hl-ring" id="hlRing" aria-hidden="true"></div>
+    <div class="hl-ring" id="hlRing" aria-hidden="true"><div class="hl-inner"><div class="hl-pulse"></div><div class="hl-pulse p2"></div><div class="hl-halo"></div><div class="hl-border"></div></div></div>
+    <div class="hl-cursor" id="hlCursor" aria-hidden="true"><span class="hl-tapring"></span><div class="hl-cursor-inner"><svg width="30" height="34" viewBox="0 0 30 34"><defs><linearGradient id="gcg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fa7e1e"/><stop offset=".55" stop-color="#d62976"/><stop offset="1" stop-color="#962fbf"/></linearGradient></defs><path d="M3 2 L3 26.5 L9.4 20.6 L13.8 30.6 L18.6 28.5 L14.3 18.7 L23 18.4 Z" fill="url(#gcg)" stroke="#fff" stroke-width="2.2" stroke-linejoin="round"/></svg></div></div>
     <button class="mascot" id="mascot" aria-label="Open Grammy" title="Grammy">🐶</button>
   </div>
 </div>`;

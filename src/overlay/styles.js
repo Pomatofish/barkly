@@ -50,10 +50,30 @@ input { font: inherit; color: inherit; }
   50% { box-shadow: 0 6px 20px rgba(0,0,0,.18), 0 0 0 2px #fff, 0 0 0 10px rgba(220,39,67,0); }
 }
 
-/* ---------------- highlight ring (how do I…) ---------------- */
-.hl-ring { position: fixed; left: 0; top: 0; z-index: 2147483646; pointer-events: none; opacity: 0; transition: opacity .25s ease; box-sizing: border-box; border: 3px solid transparent; background: linear-gradient(#fff0,#fff0) padding-box, linear-gradient(45deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888) border-box; box-shadow: 0 0 0 4px rgba(220,39,67,.18), 0 0 24px rgba(214,41,118,.45); }
-.hl-ring.show { opacity: 1; animation: grammy-hl 1.6s ease-in-out infinite; }
-@keyframes grammy-hl { 0%, 100% { box-shadow: 0 0 0 4px rgba(220,39,67,.18), 0 0 24px rgba(214,41,118,.45); } 50% { box-shadow: 0 0 0 10px rgba(220,39,67,.08), 0 0 34px rgba(214,41,118,.65); } }
+/* ---------------- highlight ring + ghost cursor (ported from demos/grammy_overlay_Test) ---------------- */
+.hl-ring { position: fixed; left: 0; top: 0; z-index: 2147483646; pointer-events: none; opacity: 0; transition: opacity .35s ease; will-change: transform; }
+.hl-ring.show { opacity: 1; }
+.hl-inner { position: absolute; inset: 0; border-radius: inherit; animation: grammy-breathe 2.6s ease-in-out infinite; }
+.hl-halo { position: absolute; inset: 0; border-radius: inherit; animation: grammy-halo 4s ease-in-out infinite; }
+.hl-border { position: absolute; inset: 0; border-radius: inherit; padding: 3px; overflow: hidden;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); }
+.hl-border::before { content: ""; position: absolute; left: 50%; top: 50%; width: var(--d, 200px); height: var(--d, 200px); margin: calc(var(--d, 200px) / -2) 0 0 calc(var(--d, 200px) / -2);
+  background: conic-gradient(from 0deg, #feda75, #fa7e1e, #d62976, #962fbf, #4f5bd5, #d62976, #fa7e1e, #feda75); animation: grammy-spin 2.8s linear infinite; }
+.hl-pulse { position: absolute; inset: 0; border-radius: inherit; border: 2px solid rgba(250,126,30,.8); opacity: 0; animation: grammy-ripple 2.6s cubic-bezier(.2,.7,.3,1) infinite; }
+.hl-pulse.p2 { animation-delay: 1.3s; border-color: rgba(150,47,191,.75); }
+.hl-cursor { position: fixed; left: 0; top: 0; width: 30px; height: 34px; z-index: 2147483647; pointer-events: none; transform-origin: 3px 2px; opacity: 0; transition: opacity .45s ease; filter: drop-shadow(0 6px 10px rgba(0,0,0,.35)); will-change: transform; }
+.hl-cursor.show { opacity: 1; }
+.hl-cursor-inner { transform-origin: 3px 2px; }
+.hl-cursor.tap .hl-cursor-inner { animation: grammy-tap 1.9s ease-in-out infinite; }
+.hl-tapring { position: absolute; left: 3px; top: 2px; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%; border: 2px solid rgba(255,255,255,.95); opacity: 0; }
+.hl-cursor.tap .hl-tapring { animation: grammy-tapring 1.9s ease-out infinite; }
+@keyframes grammy-spin { to { transform: rotate(1turn); } }
+@keyframes grammy-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.045); } }
+@keyframes grammy-halo { 0%, 100% { box-shadow: 0 0 18px 4px rgba(214,41,118,.55), 0 0 44px 12px rgba(150,47,191,.28); } 50% { box-shadow: 0 0 24px 6px rgba(250,126,30,.55), 0 0 58px 16px rgba(214,41,118,.3); } }
+@keyframes grammy-ripple { 0% { inset: 0; opacity: .9; } 100% { inset: -20px; opacity: 0; } }
+@keyframes grammy-tap { 0%, 45%, 100% { transform: scale(1); } 55% { transform: scale(.8) translate(1px, 1px); } 68% { transform: scale(1.04); } 76% { transform: scale(1); } }
+@keyframes grammy-tapring { 0%, 52% { transform: scale(.3); opacity: 0; } 57% { opacity: .95; } 100% { transform: scale(1.5); opacity: 0; } }
 
 /* ---------------- speech bubble ---------------- */
 .bubble {
