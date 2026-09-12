@@ -6,6 +6,9 @@ import { request, MSG, ERR } from '../../shared/types.js';
 
 let listening = false;
 let currentAudio = null;
+let lastError = null;
+/** Last voice failure (stop/transcribe), for the overlay's row-8 reason line. */
+export function lastVoiceError() { return lastError; }
 
 /** @returns {Promise<{ok:true}|{ok:false,error:{code:string,message:string}}>} */
 export async function startListening() {
@@ -29,7 +32,8 @@ export async function stopListening() {
   try {
     const res = await request(MSG.VOICE_STOP, {});
     listening = false;
-    if (!res || !res.ok || !res.data || !res.data.audioBase64) return null;
+    if (!res || !res.ok || !res.data || !res.data.audioBase64) { lastError = (res && res.error) || { code: 'NO_AUDIO', message: 'no audio returned' }; console.warn('[grammy/voice] stopListening', lastError); return null; }
+    lastError = null;
     const { audioBase64, mime } = res.data;
     const bytes = base64ToUint8Array(audioBase64);
     return new Blob([bytes], { type: mime || 'audio/webm' });
@@ -45,7 +49,8 @@ export async function transcribe(blob) {
     if (!blob) return '';
     const audioBase64 = await blobToBase64(blob);
     const res = await request(MSG.TRANSCRIBE, { audioBase64, mime: blob.type || 'audio/webm' });
-    if (!res || !res.ok || !res.data) return '';
+    if (!res || !res.ok || !res.data) { lastError = (res && res.error) || { code: 'STT_FAILED', message: 'empty response' }; console.warn('[grammy/voice] transcribe', lastError); return ''; }
+    lastError = null;
     return String(res.data.text || '').trim();
   } catch (e) {
     return '';

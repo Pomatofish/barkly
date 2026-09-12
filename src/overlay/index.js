@@ -7,7 +7,7 @@
 // and the functions it wires up, so this module still imports cleanly in Node/test pages.
 import { PILL, LIMITS, MSG, ERR, STORAGE_KEYS, request, defaultMemory } from '../../shared/types.js';
 import { getPageContext, onNavigate, describeStatus, focusedPost } from '../context/index.js';
-import { startListening, stopListening, transcribe, speak, stopSpeaking } from '../voice/index.js';
+import { startListening, stopListening, transcribe, speak, stopSpeaking, lastVoiceError } from '../voice/index.js';
 import { askAssistant, styleAdvice, getMemory, saveMemory, unpin, forgetAll, getChips } from '../brain/index.js';
 import { buildCSS } from './styles.js';
 import { buildHTML } from './template.js';
@@ -568,6 +568,8 @@ async function endPTT() {
     const blob = await deps.stopListening();
     if (!blob) {
       setStatus(PILL.DIDNT_CATCH.level, PILL.DIDNT_CATCH.message);
+      const e = lastVoiceError();
+      appendLog('system', 'Recording failed' + (e ? ` (${e.code}: ${e.message})` : '') + ' — hold the mascot or Space a little longer, then speak.');
       focusTextInput();
       return;
     }
@@ -575,6 +577,10 @@ async function endPTT() {
     const words = (text || '').trim().split(/\s+/).filter(Boolean);
     if (words.length < LIMITS.MIN_TRANSCRIPT_WORDS) {
       setStatus(PILL.DIDNT_CATCH.level, PILL.DIDNT_CATCH.message); // row 8
+      const e = lastVoiceError();
+      appendLog('system', text && text.trim()
+        ? `Heard only "${text.trim()}" — try a full question of a few words.`
+        : 'Transcription failed' + (e ? ` (${e.code}: ${e.message})` : '') + ' — check the API key, or type instead.');
       focusTextInput();
       return;
     }

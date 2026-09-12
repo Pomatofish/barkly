@@ -38,7 +38,8 @@ input { font: inherit; color: inherit; }
 }
 .mascot:hover { transform: scale(1.06); }
 .mascot.bounce { animation: grammy-bounce .5s ${SPRING}; }
-.mascot.listening { animation: grammy-pulse 1.1s ease-in-out infinite; }
+.mascot.listening { animation: grammy-pulse 1.1s ease-in-out infinite; box-shadow: 0 0 0 4px rgba(220,39,67,.35), 0 0 22px rgba(220,39,67,.6); }
+.mascot.listening::after { content: '● Listening…'; position: absolute; right: 0; bottom: calc(100% + 8px); white-space: nowrap; font: 600 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #fff; background: linear-gradient(45deg,#dc2743,#cc2366); padding: 6px 10px; border-radius: 999px; box-shadow: 0 4px 12px rgba(0,0,0,.2); animation: grammy-pulse 1.1s ease-in-out infinite; }
 @keyframes grammy-bounce {
   0% { transform: translateY(0); }
   40% { transform: translateY(-14px) scale(1.08); }
