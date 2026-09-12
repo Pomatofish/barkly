@@ -100,14 +100,14 @@ input { font: inherit; color: inherit; }
 .pill.yellow { background: #fff4d6; color: #8a5a00; }
 .pill.red { background: #fde8e8; color: #b3261e; }
 
-.persona-row { display: flex; gap: 6px; padding: 10px 12px 0; flex: none; }
+.persona-row { display: none; } /* persona lives in settings (gear) — kept in the DOM for the JS wiring */
 .persona-btn {
   flex: 1; padding: 6px 8px; border-radius: 999px; border: 1px solid #dbdbdb;
   font-size: 12px; font-weight: 600; color: #737373; background: #fff; transition: all .2s;
 }
 .persona-btn.active { background: #262626; color: #fff; border-color: #262626; }
 
-.chips-row { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px; flex: none; }
+.chips-row { display: none; } /* suggestions removed from the chat for a cleaner, organic feel */
 .chip {
   padding: 6px 11px; border-radius: 999px; border: 1px solid #dbdbdb; background: #fff;
   font-size: 12px; font-weight: 600; color: #262626; transition: transform .2s ${SPRING}, background .2s;
@@ -137,9 +137,11 @@ input { font: inherit; color: inherit; }
 .forget-btn { display: block; width: 100%; text-align: left; color: #b3261e; font-size: 12px; font-weight: 600; padding: 6px 0 2px; }
 
 .log {
-  flex: 1; overflow-y: auto; padding: 10px 12px; min-height: 90px;
-  display: flex; flex-direction: column; gap: 6px; background: #fff;
+  flex: 1; overflow-y: auto; padding: 14px 14px 10px; min-height: 220px;
+  display: flex; flex-direction: column; gap: 8px; background: #fff; scroll-behavior: smooth; scrollbar-width: thin;
 }
+.log .msg { animation: grammy-msg-in .25s ease both; line-height: 1.4; }
+@keyframes grammy-msg-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .msg { max-width: 84%; padding: 8px 12px; border-radius: 16px; line-height: 1.35; font-size: 13.5px; white-space: pre-wrap; word-break: break-word; }
 .msg.user { align-self: flex-end; background: #0095f6; color: #fff; border-bottom-right-radius: 4px; }
 .msg.assistant { align-self: flex-start; background: #efefef; color: #262626; border-bottom-left-radius: 4px; }
